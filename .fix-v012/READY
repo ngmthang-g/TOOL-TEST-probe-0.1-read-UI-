@@ -1,1 +1,1 @@
-retry after object_new declaration fix
+retry 2 after CRLF-safe object_new declaration fix

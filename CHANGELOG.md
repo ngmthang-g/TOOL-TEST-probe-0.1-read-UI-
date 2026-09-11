@@ -17,7 +17,8 @@
 
 ### Build
 - Local platform-neutral tests: PASS.
-- Windows CI: PENDING.
+- Windows CI: PASS — source contract, CMake x64 configure, MSVC Release build, native CTest, artifact upload and `dist/` publication all succeeded.
+- Build workflow run: `34611065539`; binary publication commit: `858b2a4d9b7b0dc2fba5d2f1b8bb58c07a882d28`.
 
 ### Runtime
 - RUNTIME UNTESTED.

@@ -9,7 +9,9 @@
 ## Current state
 - Source contract tests: PASS locally.
 - Platform-neutral hit ranking/snapshot diff test: PASS locally.
-- Windows MSVC build: BUILD PENDING until GitHub Actions completes.
+- Windows MSVC build: BUILD PASS on GitHub Actions (`34611065539`).
+- Published binaries: `dist/ProbeController.exe`, `dist/ProbeBridge.dll`, `dist/ThanLong-UI-Internal-Probe-v0.1-win-x64.zip`.
+- Binary publication commit: `858b2a4d9b7b0dc2fba5d2f1b8bb58c07a882d28`.
 - Runtime on real game: RUNTIME UNTESTED.
 
 ## Architecture

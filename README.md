@@ -6,6 +6,7 @@ Mini probe tách từ nền UI/bridge của tool 9.9 để kiểm tra **UI runti
 
 - Version: `0.1.0-probe`
 - Build target: Windows x64
+- Build: **BUILD PASS** trên GitHub Actions Windows x64 (MSVC Release + CTest).
 - Runtime: **RUNTIME UNTESTED** cho tới khi test trên client game thật.
 - Không cache `UIButton*` giữa các lần UI thay đổi; mỗi action re-scan/re-resolve object hiện tại.
 
@@ -41,4 +42,12 @@ ctest --test-dir build -C Release --output-on-failure
 
 Output: `build/bin/ProbeController.exe` và `build/bin/ProbeBridge.dll`.
 
-GitHub Actions artifact: **ThanLong-UI-Internal-Probe-v0.1-win-x64**. Workflow cũng cố publish bản build vào `dist/` trên nhánh chính để tải EXE/DLL/ZIP trực tiếp.
+Trạng thái build xác nhận ngày 2026-09-11:
+- Source contract tests: PASS.
+- CMake configure x64: PASS.
+- MSVC Release build: PASS.
+- Native CTest: PASS.
+- GitHub Actions artifact upload: PASS.
+- `dist/ProbeController.exe`, `dist/ProbeBridge.dll` và `dist/ThanLong-UI-Internal-Probe-v0.1-win-x64.zip`: PUBLISHED.
+
+GitHub Actions artifact: **ThanLong-UI-Internal-Probe-v0.1-win-x64**. Build pass không đồng nghĩa runtime pass; runtime vẫn phải test trên client game thật.

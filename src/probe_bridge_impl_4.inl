@@ -45,29 +45,33 @@ bool InvokeControl(UiControl& control, wchar_t* detail, std::size_t cap) {
 }
 
 bool PickAtPoint(int x, int y, ProbeResponse& response, wchar_t* detail, std::size_t cap) {
-    UiControl selected{}; PointHitStats stats{};
-    if (!FindVisualAtPoint(x, y, selected, stats, detail, cap)) return false;
+    UiControl selected{}; EventRaycastStats stats{}; bool ambiguous = false;
+    if (!FindEventSystemControlAtPoint(x, y, false, selected, ambiguous, stats, detail, cap)) {
+        if (ambiguous) response.resultCode = static_cast<std::int32_t>(ResultCode::Ambiguous);
+        return false;
+    }
     FillRow(selected, response.picked);
     response.resultCode = static_cast<std::int32_t>(ResultCode::Picked);
-    SetText(detail, cap, L"F8 PICK PASS • visual ");
+    SetText(detail, cap, L"F8 PICK PASS • EventSystem target ");
     Append(detail, cap, response.picked.className);
     Append(detail, cap, L" • Name="); Append(detail, cap, response.picked.name);
-    Append(detail, cap, response.picked.directCallable ? L" • DIRECT" : L" • visual child/non-callable");
-    AppendHitStats(detail, cap, stats);
+    Append(detail, cap, response.picked.directCallable ? L" • DIRECT READY" : L" • mapped visual/non-callable");
+    AppendRaycastStats(detail, cap, stats);
     return true;
 }
 
 bool DirectInvokeAtPoint(int x, int y, ProbeResponse& response, wchar_t* detail, std::size_t cap) {
-    UiControl selected{}; bool ambiguous = false;
-    if (!FindDirectControlAtPoint(x, y, selected, ambiguous, detail, cap)) {
+    UiControl selected{}; EventRaycastStats stats{}; bool ambiguous = false;
+    if (!FindEventSystemControlAtPoint(x, y, true, selected, ambiguous, stats, detail, cap)) {
         if (ambiguous) response.resultCode = static_cast<std::int32_t>(ResultCode::Ambiguous);
         return false;
     }
     FillRow(selected, response.picked);
     if (!InvokeControl(selected, detail, cap)) return false;
     response.resultCode = static_cast<std::int32_t>(ResultCode::DirectDispatched);
-    SetText(detail, cap, L"DIRECT DISPATCH PASS • re-resolved current UI • ");
+    SetText(detail, cap, L"DIRECT DISPATCH PASS • EventSystem re-raycast -> UIObject -> callback • ");
     Append(detail, cap, response.picked.className);
+    AppendRaycastStats(detail, cap, stats);
     return true;
 }
 
@@ -105,13 +109,13 @@ void CancelDrag(Il2CppObject* manager) {
 }
 
 bool InputSyncClickAtPoint(int x, int y, ProbeResponse& response, wchar_t* detail, std::size_t cap) {
-    // InputSync owns the real Unity EventSystem raycast. Do not block it on direct-callback discovery.
-    UiControl visual{}; PointHitStats visualStats{}; wchar_t visualDetail[256]{};
-    if (FindVisualAtPoint(x, y, visual, visualStats, visualDetail, _countof(visualDetail)))
+    // Retained only as known-working baseline from donor source; v0.1.2 UI does not expose this test.
+    UiControl visual{}; EventRaycastStats visualStats{}; bool ambiguous = false; wchar_t visualDetail[256]{};
+    if (FindEventSystemControlAtPoint(x, y, false, visual, ambiguous, visualStats, visualDetail, _countof(visualDetail)))
         FillRow(visual, response.picked);
     if (!EnsureInputSync(detail, cap)) return false;
-    UnityVector2 point{}; const MethodInfo* ignoredContains = nullptr;
-    if (!BuildUnityScreenPoint(x, y, point, ignoredContains, detail, cap)) return false;
+    UnityVector2 point{};
+    if (!BuildUnityScreenPoint(x, y, point, detail, cap)) return false;
     Il2CppObject* manager = nullptr;
     if (!InvokeObject(g_ui.inputGetInstance, nullptr, manager, detail, cap) || !manager) {
         SetText(detail, cap, L"InputSyncManager.Instance chưa sẵn sàng"); return false;
@@ -132,73 +136,6 @@ bool InputSyncClickAtPoint(int x, int y, ProbeResponse& response, wchar_t* detai
     response.resultCode = static_cast<std::int32_t>(ResultCode::InputSyncDispatched);
     SetText(detail, cap, L"INPUTSYNC PASS • TryClickUI -> EndUIDrag • drag cleared");
     return true;
-}
-
-bool GuiCallReferenceParam(const MethodInfo* method, std::uint32_t index) {
-    if (!method || index >= g_api.method_get_param_count(method)) return false;
-    const Il2CppType* type = g_api.method_get_param(method, index);
-    Il2CppClass* klass = type ? g_api.class_from_type(type) : nullptr;
-    return klass && !g_api.class_is_valuetype(klass);
-}
-
-bool FindUiByName(const char* uiName, Il2CppObject*& ui, wchar_t* detail, std::size_t cap) {
-    ui = nullptr;
-    if (!EnsureUiLua(true, detail, cap)) return false;
-    Il2CppString* name = g_api.string_new(uiName);
-    if (!name) return false;
-    for (const char* methodName : {"FindUI", "MainFindUI"}) {
-        const MethodInfo* method = ExactMethod(g_ui.guiApi, methodName, 1, true, "System.String");
-        if (!method) continue;
-        void* args[] = {&name};
-        if (InvokeObjectArgs(method, nullptr, args, ui, detail, cap) && ui) return true;
-    }
-    SetText(detail, cap, L"Không tìm thấy UI theo tên"); return false;
-}
-
-bool TrySemanticCallUi(const char* uiName, wchar_t* detail, std::size_t cap) {
-    if (!EnsureUiLua(true, detail, cap)) return false;
-    Il2CppString* name = g_api.string_new(uiName);
-    Il2CppObject* emptyArgs = g_api.array_new(g_ui.systemObject, 0);
-    if (!name || !emptyArgs) return false;
-    for (const char* methodName : {"MainCallUI", "CallUI"}) {
-        for (int argc = 1; argc <= 3; ++argc) {
-            const MethodInfo* method = FindMethod(g_ui.guiApi, methodName, argc);
-            if (!method || !StaticMethod(method) || !ParamType(method, 0, "System.String")) continue;
-            Il2CppObject* null1 = nullptr; Il2CppObject* null2 = nullptr;
-            void* args[3] = {&name, nullptr, nullptr}; bool compatible = true;
-            if (argc >= 2) {
-                if (ParamType(method, 1, "System.Object[]")) args[1] = &emptyArgs;
-                else if (GuiCallReferenceParam(method, 1)) args[1] = &null1;
-                else compatible = false;
-            }
-            if (argc >= 3) {
-                if (ParamType(method, 2, "System.Object[]")) args[2] = &emptyArgs;
-                else if (GuiCallReferenceParam(method, 2)) args[2] = &null2;
-                else compatible = false;
-            }
-            if (!compatible) continue;
-            void* exc = nullptr;
-            (void)g_api.runtime_invoke(method, nullptr, args, &exc);
-            if (!exc) return true;
-        }
-    }
-    SetText(detail, cap, L"Không có MainCallUI/CallUI overload tương thích"); return false;
-}
-
-bool SemanticOpenBag(bool verifyOnly, ProbeResponse& response, wchar_t* detail, std::size_t cap) {
-    Il2CppObject* bag = nullptr; wchar_t ignored[192]{};
-    if (FindUiByName("RoleInfo_BagTab", bag, ignored, _countof(ignored)) && bag) {
-        response.resultCode = static_cast<std::int32_t>(ResultCode::SemanticVerified);
-        SetText(detail, cap, L"SEMANTIC VERIFY PASS • RoleInfo_BagTab tồn tại"); return true;
-    }
-    if (verifyOnly) { SetText(detail, cap, L"SEMANTIC VERIFY FAIL • RoleInfo_BagTab chưa tồn tại"); return false; }
-    wchar_t parentDetail[192]{}, bagDetail[192]{};
-    const bool parent = TrySemanticCallUi("RoleInfo", parentDetail, _countof(parentDetail));
-    const bool child = TrySemanticCallUi("RoleInfo_BagTab", bagDetail, _countof(bagDetail));
-    response.value0 = parent ? 1 : 0; response.value1 = child ? 1 : 0;
-    if (!child) { SetText(detail, cap, L"SEMANTIC BAG DISPATCH FAIL • "); Append(detail, cap, bagDetail); return false; }
-    response.resultCode = static_cast<std::int32_t>(ResultCode::SemanticDispatched);
-    SetText(detail, cap, L"SEMANTIC BAG DISPATCH PASS • MainCallUI/CallUI RoleInfo_BagTab"); return true;
 }
 
 bool EnsureShared() {
@@ -238,8 +175,6 @@ void ProcessRequest() {
                 ok = DirectInvokeAtPoint(g_shared->request.arg0, g_shared->request.arg1, response, detail, _countof(detail)); break;
             case Command::InputSyncClickAtPoint:
                 ok = InputSyncClickAtPoint(g_shared->request.arg0, g_shared->request.arg1, response, detail, _countof(detail)); break;
-            case Command::SemanticOpenBag:
-                ok = SemanticOpenBag(g_shared->request.arg0 != 0, response, detail, _countof(detail)); break;
             default:
                 SetText(detail, _countof(detail), L"Probe command không hợp lệ"); break;
         }

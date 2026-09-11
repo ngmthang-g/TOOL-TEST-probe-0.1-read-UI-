@@ -111,6 +111,7 @@ struct Api {
     FieldInfo* (__cdecl* class_get_field_from_name)(Il2CppClass*, const char*) = nullptr;
     const Il2CppType* (__cdecl* field_get_type)(FieldInfo*) = nullptr;
     void (__cdecl* field_get_value)(Il2CppObject*, FieldInfo*, void*) = nullptr;
+    std::size_t (__cdecl* field_get_offset)(FieldInfo*) = nullptr;
     Il2CppClass* (__cdecl* class_from_type)(const Il2CppType*) = nullptr;
     bool (__cdecl* class_is_valuetype)(const Il2CppClass*) = nullptr;
     std::int32_t (__cdecl* string_length)(Il2CppString*) = nullptr;
@@ -136,8 +137,8 @@ struct Api {
         NEED(domain_get); NEED(domain_assembly_open); NEED(assembly_get_image); NEED(class_from_name);
         NEED(class_get_method_from_name); NEED(class_get_parent); NEED(method_get_flags);
         NEED(method_get_param_count); NEED(method_get_param); NEED(method_get_return_type);
-        NEED(type_get_name); NEED(runtime_invoke); NEED(object_unbox); NEED(object_get_class);
-        NEED(class_get_field_from_name); NEED(field_get_type); NEED(field_get_value);
+        NEED(type_get_name); NEED(runtime_invoke); NEED(object_unbox); NEED(object_new); NEED(object_get_class);
+        NEED(class_get_field_from_name); NEED(field_get_type); NEED(field_get_value); NEED(field_get_offset);
         NEED(class_from_type); NEED(class_is_valuetype); NEED(string_length); NEED(string_chars);
 #undef NEED
         if (!Resolve(module, "il2cpp_free", free_fn)) { SetText(detail, cap, L"Thiếu il2cpp_free"); return false; }

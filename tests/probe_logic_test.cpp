@@ -49,6 +49,35 @@ int main() {
         assert(r.status == PickStatus::Selected);
         assert(r.index == 12);
     }
+
+    {
+        std::vector<RaycastCandidate> candidates{
+            {3, 0, 2, true, 300},
+            {1, 1, 4, true, 100},
+            {2, 0, 1, true, 200},
+        };
+        const auto r = ChooseRaycastCandidate(candidates);
+        assert(r.status == PickStatus::Selected);
+        assert(r.index == 2);
+    }
+    {
+        std::vector<RaycastCandidate> candidates{
+            {0, 0, 4, true, 111},
+            {0, 0, 4, true, 222},
+        };
+        const auto r = ChooseRaycastCandidate(candidates);
+        assert(r.status == PickStatus::Ambiguous);
+        assert(r.index == -1);
+    }
+    {
+        std::vector<RaycastCandidate> candidates{
+            {0, 0, 7, false, 111},
+            {1, 1, 6, true, 222},
+        };
+        const auto r = ChooseRaycastCandidate(candidates);
+        assert(r.status == PickStatus::Selected);
+        assert(r.index == 1);
+    }
     {
         const std::vector<std::uint64_t> before{1, 2, 3};
         const std::vector<std::uint64_t> after{2, 3, 4, 5};

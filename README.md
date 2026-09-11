@@ -1,36 +1,45 @@
-# ThanLong UI Internal Probe v0.1.1
+# ThanLong UI Internal Probe v0.1.2
 
-Mini probe tách từ nền UI/bridge của tool 9.9 để kiểm tra **UI runtime không cần tên hiển thị** trong Thần Long. Bản này cố ý bỏ toàn bộ automation cũ; chỉ giữ chức năng tìm UI và thử ba đường tác động nội bộ.
+Mini probe tách từ nền 9.9, chỉ phục vụ đọc UI runtime và thử **gọi callback trực tiếp** của UI trong Thần Long.
 
 ## Trạng thái
 
-- Version: `0.1.1-probe`
-- Build target: Windows x64
-- Build: **BUILD PASS** cho v0.1.1 trên GitHub Actions Windows x64 (run `34614089454`).
-- Runtime: **SCAN PASS** trên client thật; F8 của v0.1.0 fail. v0.1.1 sửa DPI + visual-hit/callable-parent và cần retest F8.
-- Không cache `UIButton*` giữa các lần UI thay đổi; mỗi action re-scan/re-resolve object hiện tại.
+- Version: `0.1.2-probe`
+- Build: **BUILD PENDING** cho patch EventSystem direct resolver.
+- Runtime đã biết: **SCAN PASS** (`SCAN ACTIVE UI`) trên client thật; InputSync của donor 9.9 là baseline đã biết hoạt động và không phải mục tiêu cần chứng minh lại.
+- Runtime cần retest: F8 EventSystem target mapping + `TEST DIRECT`.
 
-## Cách dùng
+## Mục tiêu v0.1.2
 
-1. Đặt `ProbeController.exe` và `ProbeBridge.dll` cùng thư mục.
-2. Mở game Thần Long, sau đó chạy `ProbeController.exe` cùng mức quyền với game.
-3. Chọn client và bấm **Attach**.
-4. Bấm **SCAN ACTIVE UI** để đọc các UIObject đang active: class, Name, Text, Tag, handler, parent chain, descendant labels, depth và local Rect.
-5. Rê chuột lên dấu X, icon túi hoặc control cần thử rồi nhấn **F8**. F8 **chỉ chọn UI, không click**.
-6. Sau khi kiểm tra đúng object ở khung Selected UI, dùng một trong ba phép thử có chủ đích:
-   - **TEST DIRECT**: re-resolve object tại điểm rồi ưu tiên `UIButton.HandleClickEvent`, `UIToggle` hoặc Lua `PointerClickHandler`.
-   - **TEST INPUTSYNC**: re-resolve điểm rồi đi `InputSyncManager.TryClickUI -> EndUIDrag`, có guard/cancel drag.
-   - **TEST BAG SEMANTIC**: thử semantic `MainCallUI/CallUI` cho `RoleInfo_BagTab`, không phụ thuộc tọa độ icon túi.
-7. Probe tự fresh-scan sau action và log số UI identity added/removed/unchanged. Với TEST BAG SEMANTIC còn gọi verify `RoleInfo_BagTab` riêng.
+v0.1.1 đã xác nhận F8 lấy đúng tọa độ nhưng `RectangleContainsScreenPoint(..., camera=null)` trả `hits=0`, nên Direct chưa bao giờ tới bước callback. v0.1.2 bỏ resolver geometry đó khỏi đường F8/Direct.
 
-> Delay của timer chỉ để lấy snapshot sau; **không được coi thời gian trôi qua là bằng chứng thành công**. Kết luận runtime phải dựa trên thay đổi UI/semantic state và quan sát game thật.
+Luồng mới:
 
-## Fail-closed
+`F8 -> EventSystem.current.RaycastAll(PointerEventData) -> GameObject hit -> walk Transform parent -> map UIObject.instances -> callable UIObject -> TEST DIRECT`
 
-- Nếu hai UI hit có diện tích và depth ngang nhau, probe trả `AMBIGUOUS` thay vì đoán.
-- Nếu điểm F8 không nằm trong client area game, không gửi action.
-- Nếu bridge còn request cũ sau timeout, controller không gửi chồng request.
-- InputSync từ chối chạy nếu `_uiDragging` đã active và gọi `CancelUIDragState` khi release lỗi.
+`TEST DIRECT` luôn **raycast và re-resolve lại target hiện tại** trước khi gọi, không giữ `UIButton*` cũ.
+
+Callback direct hỗ trợ:
+
+- `UIButton.HandleClickEvent()`
+- `UIToggle.set_Selected(true)` / `HandleSelectEvent(true)`
+- `UIRectTransform.PointerClickHandler` qua `MonoBehaviourExecutor.ExecuteScriptFunction`
+
+## Những thứ đã bỏ khỏi UI probe
+
+- `TEST BAG SEMANTIC` đã bị loại bỏ vì live test cho thấy đường semantic generic có thể làm game timeout/diss.
+- Không còn nút `TEST INPUTSYNC`; InputSync chỉ được giữ nội bộ làm donor/reference, không phải mục tiêu probe.
+- Không có auto train, sell, trade, route, Telegram hay automation legacy.
+
+## Cách test v0.1.2
+
+1. Để `ProbeController.exe` và `ProbeBridge.dll` cùng thư mục.
+2. Chọn client -> **Attach** -> **SCAN ACTIVE UI**.
+3. Rê chuột lên dấu X/icon/nút cần tìm -> nhấn **F8**. F8 chỉ raycast/chọn, không click.
+4. Log tốt sẽ có `F8 PICK PASS • EventSystem target ...` cùng `raycastHits=`, `mapped=`, `callableMapped=`.
+5. Bấm **TEST DIRECT**. Tool re-raycast tại điểm F8 và gọi callback direct của target hiện hành.
+
+Nếu F8 có `raycastHits>0` nhưng `mapped=0`, gửi log đó để sửa lớp map `GameObject -> UIObject`; không quay lại test InputSync.
 
 ## Build
 
@@ -40,25 +49,6 @@ cmake --build build --config Release
 ctest --test-dir build -C Release --output-on-failure
 ```
 
-Output: `build/bin/ProbeController.exe` và `build/bin/ProbeBridge.dll`.
+GitHub Actions Windows x64 sẽ tạo artifact `ThanLong-UI-Internal-Probe-v0.1.2-win-x64` và publish EXE/DLL/ZIP vào `dist/` sau khi CI pass.
 
-Trạng thái build xác nhận ngày 2026-09-11:
-- Source contract tests: PASS.
-- CMake configure x64: PASS.
-- MSVC Release build: PASS.
-- Native CTest: PASS.
-- GitHub Actions artifact upload: PASS.
-- `dist/ProbeController.exe`, `dist/ProbeBridge.dll` và `dist/ThanLong-UI-Internal-Probe-v0.1.1-win-x64.zip`: PUBLISHED.
-
-GitHub Actions artifact: **ThanLong-UI-Internal-Probe-v0.1.1-win-x64**. Build pass không đồng nghĩa runtime pass; runtime vẫn phải test trên client game thật.
-
-
-## v0.1.1 — F8 runtime fix
-
-Runtime v0.1.0 xác nhận `SCAN ACTIVE UI` đọc được 221 UI object nhưng F8 có hai lỗi: `cursor outside client area` và `no callable control at F8`. v0.1.1 sửa theo ba lớp:
-
-- bật `PER_MONITOR_AWARE_V2` trước khi tạo window để cursor/client coordinates cùng physical-pixel space;
-- F8 hit-test **mọi UI có geometry**, sau đó mới resolve callable parent/overlap cho `TEST DIRECT`;
-- F8 luôn giữ normalized point khi tọa độ hợp lệ, vì vậy `TEST INPUTSYNC` có thể dùng EventSystem raycast của game ngay cả khi semantic visual resolver không nhận diện được object.
-
-Log F8 mới ghi `screen/client/size/normalized` và bridge ghi `objects/geometry/hits/callableHits/UnityScreenPoint`.
+Build pass không đồng nghĩa Direct runtime pass; trạng thái runtime chỉ được nâng sau live evidence trên client thật.

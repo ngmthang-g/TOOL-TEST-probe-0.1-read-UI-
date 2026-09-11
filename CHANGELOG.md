@@ -1,3 +1,15 @@
+# Changelog
+
+## [0.1.2-probe] - 2026-09-11
+
+- Thay F8/direct target resolver từ `RectangleContainsScreenPoint(camera=null)` sang `EventSystem.current.RaycastAll`.
+- Map `RaycastResult.gameObject` qua Transform parent về live `UIObject.instances` rồi chọn callable target.
+- `TEST DIRECT` re-raycast/re-resolve target trước mỗi dispatch; không cache pointer UI cũ.
+- Loại bỏ `TEST BAG SEMANTIC` khỏi protocol/UI vì live test gây bridge timeout/game diss.
+- Gỡ nút test InputSync khỏi UI; InputSync donor chỉ còn baseline/reference nội bộ.
+- Protocol bump `0x00010200` để EXE/DLL v0.1.2 không trộn với bản cũ.
+- Runtime status: `EVENTSYSTEM_DIRECT_RETEST_REQUIRED`.
+
 # CHANGELOG
 
 ## [0.1.1-probe] - 2026-09-11

@@ -79,8 +79,7 @@ bool ReadRectMetrics(Il2CppObject* rectTransform, UiControl& out) {
 }
 
 bool BuildUnityScreenPoint(int normalizedX, int normalizedY, UnityVector2& point,
-                           const MethodInfo*& contains, wchar_t* detail, std::size_t cap) {
-    contains = nullptr;
+                           wchar_t* detail, std::size_t cap) {
     if (!EnsureUiGeometry(detail, cap)) return false;
     if (normalizedX < 0 || normalizedX >= kCoordinateScale || normalizedY < 0 || normalizedY >= kCoordinateScale) {
         SetText(detail, cap, L"Tọa độ chuẩn hóa nằm ngoài client"); return false;
@@ -90,20 +89,10 @@ bool BuildUnityScreenPoint(int normalizedX, int normalizedY, UnityVector2& point
         !StaticScalar(g_ui.unityScreen, "get_height", height, detail, cap) || height <= 0) {
         SetText(detail, cap, L"Không đọc được Unity Screen.width/height"); return false;
     }
-    contains = ExactMethod(g_ui.rectTransformUtility, "RectangleContainsScreenPoint", 3, true,
-        "UnityEngine.RectTransform", "UnityEngine.Vector2", "UnityEngine.Camera");
-    if (!contains) { SetText(detail, cap, L"Không resolve RectangleContainsScreenPoint"); return false; }
     point.x = static_cast<float>(static_cast<double>(normalizedX) * width / kCoordinateScale);
     const double topY = static_cast<double>(normalizedY) * height / kCoordinateScale;
     point.y = static_cast<float>(height - 1.0 - topY);
     return true;
-}
-
-bool RectContainsScreenPoint(Il2CppObject* rectTransform, const UnityVector2& point, const MethodInfo* contains) {
-    UnityVector2 p = point; Il2CppObject* camera = nullptr;
-    void* args[] = {&rectTransform, &p, &camera};
-    std::int64_t result = 0; wchar_t ignored[128]{};
-    return InvokeScalarArgs(contains, nullptr, args, result, ignored, _countof(ignored)) && result != 0;
 }
 
 bool ClassifyControl(Il2CppClass* klass, LocalKind& kind) {
@@ -304,139 +293,278 @@ bool ScanUi(ProbeResponse& response, wchar_t* detail, std::size_t cap) {
     return true;
 }
 
-struct PointHitStats {
+struct EventRaycastStats {
+    int raycastHits = 0;
     int totalObjects = 0;
-    int geometryObjects = 0;
-    int visualHits = 0;
-    int callableHits = 0;
+    int boundObjects = 0;
+    int mappedObjects = 0;
+    int callableMapped = 0;
     UnityVector2 unityPoint{};
 };
 
-bool CollectPointHits(int normalizedX, int normalizedY,
-                      std::vector<UiControl>& objects,
-                      std::vector<int>& hitIndices,
-                      PointHitStats& stats,
-                      wchar_t* detail, std::size_t cap) {
-    hitIndices.clear();
+struct MappedRaycast {
+    int objectIndex = -1;
+    int raycastOrder = -1;
+    int ancestorDistance = -1;
+};
+
+Il2CppClass* ResolveEventClass(const char* name) {
+    if (!name) return nullptr;
+    OpenUnityImages();
+    for (const Il2CppImage* image : {g_ui.eventSystemsImage, g_ui.uiModuleImage, g_ui.legacyUnityImage}) {
+        if (!image) continue;
+        if (Il2CppClass* klass = g_api.class_from_name(image, "UnityEngine.EventSystems", name)) return klass;
+    }
+    return nullptr;
+}
+
+bool EnsureEventSystemRaycast(wchar_t* detail, std::size_t cap) {
+    if (g_ui.eventSystemReady) return true;
+    if (!EnsureUiGeometry(detail, cap)) return false;
+    g_ui.eventSystem = ResolveEventClass("EventSystem");
+    g_ui.pointerEventData = ResolveEventClass("PointerEventData");
+    if (!g_ui.eventSystem || !g_ui.pointerEventData) {
+        SetText(detail, cap, L"EventSystem/PointerEventData chưa resolve"); return false;
+    }
+    g_ui.eventGetCurrent = ExactMethod(g_ui.eventSystem, "get_current", 0, true);
+    g_ui.eventRaycastAll = ExactMethod(g_ui.eventSystem, "RaycastAll", 2, false,
+                                       "UnityEngine.EventSystems.PointerEventData");
+    g_ui.pointerCtor = ExactMethod(g_ui.pointerEventData, ".ctor", 1, false,
+                                   "UnityEngine.EventSystems.EventSystem");
+    g_ui.pointerSetPosition = ExactMethod(g_ui.pointerEventData, "set_position", 1, false,
+                                          "UnityEngine.Vector2");
+    if (!g_ui.eventGetCurrent || !g_ui.eventRaycastAll || !g_ui.pointerCtor || !g_ui.pointerSetPosition) {
+        SetText(detail, cap, L"EventSystem RaycastAll/PointerEventData signature chưa resolve"); return false;
+    }
+
+    const Il2CppType* listType = g_api.method_get_param(g_ui.eventRaycastAll, 1);
+    g_ui.raycastListClass = listType ? g_api.class_from_type(listType) : nullptr;
+    if (!g_ui.raycastListClass) {
+        SetText(detail, cap, L"Không resolve được List<RaycastResult>"); return false;
+    }
+    g_ui.raycastListCtor = ExactMethod(g_ui.raycastListClass, ".ctor", 0, false);
+    g_ui.raycastListCount = ExactMethod(g_ui.raycastListClass, "get_Count", 0, false);
+    g_ui.raycastListGetItem = ExactMethod(g_ui.raycastListClass, "get_Item", 1, false, "System.Int32");
+    const Il2CppType* itemType = g_ui.raycastListGetItem ? g_api.method_get_return_type(g_ui.raycastListGetItem) : nullptr;
+    g_ui.raycastResultClass = itemType ? g_api.class_from_type(itemType) : nullptr;
+    g_ui.raycastResultGameObject = g_ui.raycastResultClass ? FindField(g_ui.raycastResultClass, "gameObject") : nullptr;
+    g_ui.raycastResultGetGameObject = g_ui.raycastResultClass ? FindMethod(g_ui.raycastResultClass, "get_gameObject", 0) : nullptr;
+    if (!g_ui.raycastListCtor || !g_ui.raycastListCount || !g_ui.raycastListGetItem ||
+        !g_ui.raycastResultClass || (!g_ui.raycastResultGameObject && !g_ui.raycastResultGetGameObject)) {
+        SetText(detail, cap, L"List<RaycastResult> hoặc RaycastResult.gameObject chưa resolve"); return false;
+    }
+    g_ui.eventSystemReady = true;
+    return true;
+}
+
+bool ExtractRaycastGameObject(Il2CppObject* boxedResult, Il2CppObject*& gameObject) {
+    gameObject = nullptr;
+    if (!boxedResult) return false;
+    wchar_t ignored[128]{};
+    if (g_ui.raycastResultGetGameObject &&
+        InvokeObject(g_ui.raycastResultGetGameObject, ManagedThis(boxedResult), gameObject, ignored, _countof(ignored)) &&
+        gameObject && AssignableObject(g_ui.unityGameObject, gameObject)) return true;
+    gameObject = nullptr;
+    if (g_ui.raycastResultGameObject) {
+        g_api.field_get_value(boxedResult, g_ui.raycastResultGameObject, &gameObject);
+        if (gameObject && AssignableObject(g_ui.unityGameObject, gameObject)) return true;
+    }
+    gameObject = nullptr;
+    return false;
+}
+
+bool RaycastRawGameObjects(int normalizedX, int normalizedY,
+                           std::vector<Il2CppObject*>& hits,
+                           EventRaycastStats& stats,
+                           wchar_t* detail, std::size_t cap) {
+    hits.clear();
     stats = {};
-    const MethodInfo* contains = nullptr;
-    if (!BuildUnityScreenPoint(normalizedX, normalizedY, stats.unityPoint, contains, detail, cap)) return false;
-    if (!EnumerateActiveUiObjects(objects, detail, cap)) return false;
-    stats.totalObjects = static_cast<int>(objects.size());
-    for (std::size_t i = 0; i < objects.size(); ++i) {
-        UiControl& control = objects[i];
-        if (!control.hasGeometry) continue;
-        ++stats.geometryObjects;
-        Il2CppObject* rectTransform = nullptr;
-        if (!ResolveRectTransform(control.object, control.klass, rectTransform)) continue;
-        if (!RectContainsScreenPoint(rectTransform, stats.unityPoint, contains)) continue;
-        hitIndices.push_back(static_cast<int>(i));
-        ++stats.visualHits;
-        if (control.directCallable) ++stats.callableHits;
+    if (!EnsureEventSystemRaycast(detail, cap)) return false;
+    if (!BuildUnityScreenPoint(normalizedX, normalizedY, stats.unityPoint, detail, cap)) return false;
+
+    Il2CppObject* current = nullptr;
+    if (!InvokeObject(g_ui.eventGetCurrent, nullptr, current, detail, cap) || !current) {
+        SetText(detail, cap, L"EventSystem.current chưa sẵn sàng"); return false;
+    }
+    Il2CppObject* pointer = g_api.object_new(g_ui.pointerEventData);
+    if (!pointer) { SetText(detail, cap, L"Không tạo được PointerEventData"); return false; }
+    void* ctorArgs[] = {&current};
+    if (!InvokeVoid(g_ui.pointerCtor, pointer, ctorArgs, detail, cap)) return false;
+    UnityVector2 point = stats.unityPoint;
+    void* posArgs[] = {&point};
+    if (!InvokeVoid(g_ui.pointerSetPosition, pointer, posArgs, detail, cap)) return false;
+
+    Il2CppObject* list = g_api.object_new(g_ui.raycastListClass);
+    if (!list || !InvokeVoid(g_ui.raycastListCtor, list, nullptr, detail, cap)) {
+        SetText(detail, cap, L"Không tạo được List<RaycastResult>"); return false;
+    }
+    void* rayArgs[] = {&pointer, &list};
+    if (!InvokeVoid(g_ui.eventRaycastAll, current, rayArgs, detail, cap)) return false;
+
+    std::int64_t count64 = 0;
+    if (!InvokeScalar(g_ui.raycastListCount, list, count64, detail, cap) || count64 < 0 || count64 > 4096) {
+        SetText(detail, cap, L"RaycastAll trả Count không hợp lệ"); return false;
+    }
+    const int count = static_cast<int>(count64);
+    stats.raycastHits = count;
+    const int limit = std::min(count, 64);
+    hits.reserve(static_cast<std::size_t>(limit));
+    for (int i = 0; i < limit; ++i) {
+        std::int32_t index = i;
+        void* itemArgs[] = {&index};
+        Il2CppObject* boxed = nullptr;
+        wchar_t ignored[128]{};
+        if (!InvokeObjectArgs(g_ui.raycastListGetItem, list, itemArgs, boxed, ignored, _countof(ignored)) || !boxed) continue;
+        Il2CppObject* gameObject = nullptr;
+        if (!ExtractRaycastGameObject(boxed, gameObject) || !gameObject) continue;
+        hits.push_back(gameObject);
+    }
+    if (hits.empty()) {
+        SetText(detail, cap, L"EventSystem.RaycastAll không trả GameObject UI tại điểm F8");
+        return false;
     }
     return true;
 }
 
-void AppendHitStats(wchar_t* detail, std::size_t cap, const PointHitStats& stats) {
-    Append(detail, cap, L" • objects="); AppendInt(detail, cap, stats.totalObjects);
-    Append(detail, cap, L" geometry="); AppendInt(detail, cap, stats.geometryObjects);
-    Append(detail, cap, L" hits="); AppendInt(detail, cap, stats.visualHits);
-    Append(detail, cap, L" callableHits="); AppendInt(detail, cap, stats.callableHits);
+bool GameObjectForControl(const UiControl& control, Il2CppObject*& gameObject) {
+    gameObject = nullptr;
+    Il2CppObject* rectTransform = nullptr;
+    if (!ResolveRectTransform(control.object, control.klass, rectTransform) || !rectTransform) return false;
+    Il2CppClass* klass = g_api.object_get_class(rectTransform);
+    const MethodInfo* getter = klass ? FindMethod(klass, "get_gameObject", 0) : nullptr;
+    wchar_t ignored[128]{};
+    return getter && InvokeObject(getter, rectTransform, gameObject, ignored, _countof(ignored)) &&
+           gameObject && AssignableObject(g_ui.unityGameObject, gameObject);
+}
+
+bool ParentGameObject(Il2CppObject* gameObject, Il2CppObject*& parentGameObject) {
+    parentGameObject = nullptr;
+    if (!gameObject) return false;
+    Il2CppClass* gameClass = g_api.object_get_class(gameObject);
+    const MethodInfo* getTransform = gameClass ? FindMethod(gameClass, "get_transform", 0) : nullptr;
+    Il2CppObject* transform = nullptr; wchar_t ignored[128]{};
+    if (!getTransform || !InvokeObject(getTransform, gameObject, transform, ignored, _countof(ignored)) || !transform) return false;
+    Il2CppClass* transformClass = g_api.object_get_class(transform);
+    const MethodInfo* getParent = transformClass ? FindMethod(transformClass, "get_parent", 0) : nullptr;
+    Il2CppObject* parentTransform = nullptr;
+    if (!getParent || !InvokeObject(getParent, transform, parentTransform, ignored, _countof(ignored)) || !parentTransform) return false;
+    Il2CppClass* parentClass = g_api.object_get_class(parentTransform);
+    const MethodInfo* getGameObject = parentClass ? FindMethod(parentClass, "get_gameObject", 0) : nullptr;
+    return getGameObject && InvokeObject(getGameObject, parentTransform, parentGameObject, ignored, _countof(ignored)) &&
+           parentGameObject && AssignableObject(g_ui.unityGameObject, parentGameObject);
+}
+
+void MapRaycastGameObject(Il2CppObject* hitGameObject, int raycastOrder,
+                          const std::vector<Il2CppObject*>& controlGameObjects,
+                          std::vector<MappedRaycast>& mapped) {
+    Il2CppObject* current = hitGameObject;
+    std::vector<Il2CppObject*> seen;
+    for (int distance = 0; current && distance < 24; ++distance) {
+        if (std::find(seen.begin(), seen.end(), current) != seen.end()) break;
+        seen.push_back(current);
+        for (std::size_t i = 0; i < controlGameObjects.size(); ++i) {
+            if (controlGameObjects[i] != current) continue;
+            const bool already = std::any_of(mapped.begin(), mapped.end(), [i](const MappedRaycast& m) {
+                return m.objectIndex == static_cast<int>(i);
+            });
+            if (!already) mapped.push_back({static_cast<int>(i), raycastOrder, distance});
+        }
+        Il2CppObject* parent = nullptr;
+        if (!ParentGameObject(current, parent)) break;
+        current = parent;
+    }
+}
+
+bool RaycastUiObjectsAtPoint(int normalizedX, int normalizedY,
+                             std::vector<UiControl>& objects,
+                             std::vector<MappedRaycast>& mapped,
+                             EventRaycastStats& stats,
+                             wchar_t* detail, std::size_t cap) {
+    mapped.clear();
+    std::vector<Il2CppObject*> raycastGameObjects;
+    if (!RaycastRawGameObjects(normalizedX, normalizedY, raycastGameObjects, stats, detail, cap)) return false;
+    if (!EnumerateActiveUiObjects(objects, detail, cap)) return false;
+    stats.totalObjects = static_cast<int>(objects.size());
+
+    std::vector<Il2CppObject*> controlGameObjects(objects.size(), nullptr);
+    for (std::size_t i = 0; i < objects.size(); ++i) {
+        Il2CppObject* gameObject = nullptr;
+        if (GameObjectForControl(objects[i], gameObject)) {
+            controlGameObjects[i] = gameObject;
+            ++stats.boundObjects;
+        }
+    }
+    for (std::size_t order = 0; order < raycastGameObjects.size(); ++order)
+        MapRaycastGameObject(raycastGameObjects[order], static_cast<int>(order), controlGameObjects, mapped);
+
+    stats.mappedObjects = static_cast<int>(mapped.size());
+    for (const auto& m : mapped) {
+        if (m.objectIndex >= 0 && static_cast<std::size_t>(m.objectIndex) < objects.size() &&
+            objects[static_cast<std::size_t>(m.objectIndex)].directCallable) ++stats.callableMapped;
+    }
+    return true;
+}
+
+void AppendRaycastStats(wchar_t* detail, std::size_t cap, const EventRaycastStats& stats) {
+    Append(detail, cap, L" • raycastHits="); AppendInt(detail, cap, stats.raycastHits);
+    Append(detail, cap, L" uiObjects="); AppendInt(detail, cap, stats.totalObjects);
+    Append(detail, cap, L" bound="); AppendInt(detail, cap, stats.boundObjects);
+    Append(detail, cap, L" mapped="); AppendInt(detail, cap, stats.mappedObjects);
+    Append(detail, cap, L" callableMapped="); AppendInt(detail, cap, stats.callableMapped);
     Append(detail, cap, L" UnityScreenPoint=");
     wchar_t pointText[96]{};
     swprintf_s(pointText, L"%.1f,%.1f", stats.unityPoint.x, stats.unityPoint.y);
     Append(detail, cap, pointText);
 }
 
-bool FindVisualAtPoint(int normalizedX, int normalizedY, UiControl& selected,
-                       PointHitStats& stats, wchar_t* detail, std::size_t cap) {
-    std::vector<UiControl> objects;
-    std::vector<int> hitIndices;
-    if (!CollectPointHits(normalizedX, normalizedY, objects, hitIndices, stats, detail, cap)) return false;
-
-    std::vector<probe_logic::HitRank> hits;
-    hits.reserve(hitIndices.size());
-    for (int index : hitIndices) {
-        if (index < 0 || static_cast<std::size_t>(index) >= objects.size()) continue;
-        const UiControl& control = objects[static_cast<std::size_t>(index)];
-        hits.push_back({index, control.area, control.depth, control.identity});
-    }
-    const auto pick = probe_logic::ChooseBestHit(hits);
-    if (pick.status != probe_logic::PickStatus::Selected || pick.index < 0 ||
-        static_cast<std::size_t>(pick.index) >= objects.size()) {
-        SetText(detail, cap, L"Không có visual UI geometry tại điểm F8");
-        AppendHitStats(detail, cap, stats);
-        return false;
-    }
-    selected = std::move(objects[static_cast<std::size_t>(pick.index)]);
-    return true;
-}
-
-bool FindCallableAncestor(const UiControl& visual, UiControl& selected) {
-    Il2CppObject* current = visual.object;
-    std::vector<Il2CppObject*> seen;
-    for (int depth = 0; depth < 24 && current; ++depth) {
-        if (std::find(seen.begin(), seen.end(), current) != seen.end()) break;
-        seen.push_back(current);
-        Il2CppClass* klass = g_api.object_get_class(current);
-        Il2CppObject* parent = nullptr;
-        if (!klass || !ObjectGetter(current, klass, "get_Parent", parent) || !parent) break;
-        UiControl candidate{};
-        if (ReadOneControl(parent, candidate, false) && candidate.directCallable) {
-            selected = std::move(candidate);
-            return true;
-        }
-        current = parent;
-    }
-    return false;
-}
-
-bool FindDirectControlAtPoint(int normalizedX, int normalizedY, UiControl& selected,
-                              bool& ambiguous, wchar_t* detail, std::size_t cap) {
+bool FindEventSystemControlAtPoint(int normalizedX, int normalizedY, bool requireDirect,
+                                   UiControl& selected, bool& ambiguous,
+                                   EventRaycastStats& stats,
+                                   wchar_t* detail, std::size_t cap) {
     ambiguous = false;
     std::vector<UiControl> objects;
-    std::vector<int> hitIndices;
-    PointHitStats stats{};
-    if (!CollectPointHits(normalizedX, normalizedY, objects, hitIndices, stats, detail, cap)) return false;
+    std::vector<MappedRaycast> mapped;
+    if (!RaycastUiObjectsAtPoint(normalizedX, normalizedY, objects, mapped, stats, detail, cap)) return false;
 
-    std::vector<probe_logic::HitRank> visualRanks;
-    visualRanks.reserve(hitIndices.size());
-    for (int index : hitIndices) {
-        if (index < 0 || static_cast<std::size_t>(index) >= objects.size()) continue;
-        const UiControl& control = objects[static_cast<std::size_t>(index)];
-        visualRanks.push_back({index, control.area, control.depth, control.identity});
+    std::vector<probe_logic::RaycastCandidate> callable;
+    callable.reserve(mapped.size());
+    for (const auto& m : mapped) {
+        if (m.objectIndex < 0 || static_cast<std::size_t>(m.objectIndex) >= objects.size()) continue;
+        const UiControl& c = objects[static_cast<std::size_t>(m.objectIndex)];
+        callable.push_back({m.objectIndex, m.raycastOrder, m.ancestorDistance, c.directCallable, c.identity});
     }
-    const auto visualPick = probe_logic::ChooseBestHit(visualRanks);
-    if (visualPick.status == probe_logic::PickStatus::Selected && visualPick.index >= 0 &&
-        static_cast<std::size_t>(visualPick.index) < objects.size()) {
-        UiControl& visual = objects[static_cast<std::size_t>(visualPick.index)];
-        if (visual.directCallable) {
-            selected = std::move(visual);
-            return true;
-        }
-        if (FindCallableAncestor(visual, selected)) return true;
-    }
-
-    std::vector<probe_logic::HitRank> callableRanks;
-    for (int index : hitIndices) {
-        if (index < 0 || static_cast<std::size_t>(index) >= objects.size()) continue;
-        const UiControl& control = objects[static_cast<std::size_t>(index)];
-        if (!control.directCallable) continue;
-        callableRanks.push_back({index, control.area, control.depth, control.identity});
-    }
-    const auto callablePick = probe_logic::ChooseHit(callableRanks);
-    if (callablePick.status == probe_logic::PickStatus::Ambiguous) {
+    const auto pick = probe_logic::ChooseRaycastCandidate(callable);
+    if (pick.status == probe_logic::PickStatus::Ambiguous) {
         ambiguous = true;
-        SetText(detail, cap, L"AMBIGUOUS • nhiều callable control đồng hạng; direct fail-closed");
-        AppendHitStats(detail, cap, stats);
+        SetText(detail, cap, L"AMBIGUOUS • EventSystem map ra nhiều callable UIObject đồng hạng; fail-closed");
+        AppendRaycastStats(detail, cap, stats);
         return false;
     }
-    if (callablePick.status != probe_logic::PickStatus::Selected || callablePick.index < 0 ||
-        static_cast<std::size_t>(callablePick.index) >= objects.size()) {
-        SetText(detail, cap, L"Visual hit có thể tồn tại nhưng không resolve được callable parent/overlap");
-        AppendHitStats(detail, cap, stats);
+    if (pick.status == probe_logic::PickStatus::Selected && pick.index >= 0 &&
+        static_cast<std::size_t>(pick.index) < objects.size()) {
+        selected = std::move(objects[static_cast<std::size_t>(pick.index)]);
+        return true;
+    }
+    if (requireDirect) {
+        SetText(detail, cap, L"EventSystem raycast có target nhưng chưa map được callable UIObject");
+        AppendRaycastStats(detail, cap, stats);
         return false;
     }
-    selected = std::move(objects[static_cast<std::size_t>(callablePick.index)]);
+
+    if (mapped.empty()) {
+        SetText(detail, cap, L"EventSystem raycast có GameObject nhưng không map được UIObject");
+        AppendRaycastStats(detail, cap, stats);
+        return false;
+    }
+    std::stable_sort(mapped.begin(), mapped.end(), [&objects](const MappedRaycast& a, const MappedRaycast& b) {
+        if (a.raycastOrder != b.raycastOrder) return a.raycastOrder < b.raycastOrder;
+        if (a.ancestorDistance != b.ancestorDistance) return a.ancestorDistance < b.ancestorDistance;
+        const int ad = (a.objectIndex >= 0 && static_cast<std::size_t>(a.objectIndex) < objects.size()) ? objects[static_cast<std::size_t>(a.objectIndex)].depth : -1;
+        const int bd = (b.objectIndex >= 0 && static_cast<std::size_t>(b.objectIndex) < objects.size()) ? objects[static_cast<std::size_t>(b.objectIndex)].depth : -1;
+        return ad > bd;
+    });
+    const int index = mapped.front().objectIndex;
+    if (index < 0 || static_cast<std::size_t>(index) >= objects.size()) return false;
+    selected = std::move(objects[static_cast<std::size_t>(index)]);
     return true;
 }

@@ -19,7 +19,7 @@ def test_protocol_probe_only():
     s = text("src/probe_protocol.h")
     for token in [
         "ScanUi", "PickAtPoint", "DirectInvokeAtPoint",
-        "InputSyncClickAtPoint", "SemanticOpenBag",
+        "InputSyncClickAtPoint",
         "kMaxUiRows = 160", "UiRow", "UiSnapshot", "SharedBlock",
         "rectX", "rectY", "rectWidth", "rectHeight",
     ]:
@@ -37,12 +37,16 @@ def test_bridge_contains_only_probe_runtime_paths():
     for token in [
         "UIObject.instances", "HandleClickEvent", "PointerClickHandler",
         "TryClickUI", "EndUIDrag", "CancelUIDragState",
-        "RectangleContainsScreenPoint", "MainCallUI", "RoleInfo_BagTab",
-        "ChooseHit", "PickStatus::Ambiguous", "TlcProbeGetMessageHook",
-        "FindVisualAtPoint", "FindCallableAncestor",
+        "EventSystem", "PointerEventData", "RaycastAll",
+        "RaycastUiObjectsAtPoint", "MapRaycastGameObject",
+        "ChooseRaycastCandidate", "PickStatus::Ambiguous", "TlcProbeGetMessageHook",
     ]:
         assert token in s, token
     assert "if (!control.directCallable || !control.hasGeometry) continue;" not in s
+    assert "SemanticOpenBag" not in s
+    assert "RoleInfo_BagTab" not in s
+    assert "TrySemanticCallUi" not in s
+    assert "CollectPointHits" not in s
     for forbidden in [
         "BackgroundSell", "BackgroundTreatment", "AutoFightAction",
         "SellBagItem", "DropBagItem", "ClickNpc", "Revive(",
@@ -56,9 +60,9 @@ def test_controller_is_probe_only_and_f8_is_selection():
     for token in [
         "RegisterHotKey", "VK_F8", "MOD_NOREPEAT",
         "Command::PickAtPoint", "Command::ScanUi",
-        "Command::DirectInvokeAtPoint", "Command::InputSyncClickAtPoint",
-        "Command::SemanticOpenBag", "SCAN ACTIVE UI", "TEST DIRECT",
-        "TEST INPUTSYNC", "TEST BAG SEMANTIC", "SetWindowsHookExW",
+        "Command::DirectInvokeAtPoint",
+        "SCAN ACTIVE UI", "TEST DIRECT",
+        "SetWindowsHookExW",
         "WH_GETMESSAGE", "TlcProbeGetMessageHook", "DiffIdentities",
         "GameAssembly.dll", "SetProcessDpiAwarenessContext",
         "DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2",
@@ -73,6 +77,9 @@ def test_controller_is_probe_only_and_f8_is_selection():
     assert "Command::DirectInvokeAtPoint" not in f8_block
     assert "Command::InputSyncClickAtPoint" not in f8_block
     assert "F8 POINT CAPTURED" in s
+    assert "TEST BAG SEMANTIC" not in s
+    assert "TEST INPUTSYNC" not in s
+    assert "Command::SemanticOpenBag" not in s
     for forbidden in [
         "ThanLongLicense", "Telegram", "BackgroundSell", "BackgroundTreatment",
         "SellBagItem", "DropBagItem", "StartAutoFight", "trade_v", "sell_filter",
@@ -91,13 +98,13 @@ def test_build_and_ci_publish_probe_artifact():
     for token in [
         "windows-latest", "cmake -S . -B build -A x64",
         "ctest --test-dir build -C Release --output-on-failure",
-        "ThanLong-UI-Internal-Probe-v0.1.1-win-x64", "actions/upload-artifact@v4",
+        "ThanLong-UI-Internal-Probe-v0.1.2-win-x64", "actions/upload-artifact@v4",
         "dist/ProbeController.exe", "dist/ProbeBridge.dll", "contents: write",
     ]:
         assert token in workflow, token
     readme = text("README.md")
     for token in [
         "SCAN PASS", "F8", "SCAN ACTIVE UI", "TEST DIRECT",
-        "TEST INPUTSYNC", "TEST BAG SEMANTIC", "ProbeBridge.dll", "0.1.1-probe",
+        "ProbeBridge.dll", "0.1.2-probe",
     ]:
         assert token in readme, token

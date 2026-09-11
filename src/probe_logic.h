@@ -22,6 +22,35 @@ struct PickResult {
     int index = -1;
 };
 
+struct RaycastCandidate {
+    int index = -1;
+    int raycastOrder = 0;
+    int ancestorDistance = 0;
+    bool directCallable = false;
+    std::uint64_t stableId = 0;
+};
+
+inline PickResult ChooseRaycastCandidate(std::vector<RaycastCandidate> candidates) {
+    candidates.erase(std::remove_if(candidates.begin(), candidates.end(), [](const RaycastCandidate& c) {
+        return c.index < 0 || !c.directCallable || c.raycastOrder < 0 || c.ancestorDistance < 0;
+    }), candidates.end());
+    if (candidates.empty()) return {};
+
+    std::stable_sort(candidates.begin(), candidates.end(), [](const RaycastCandidate& a, const RaycastCandidate& b) {
+        if (a.raycastOrder != b.raycastOrder) return a.raycastOrder < b.raycastOrder;
+        if (a.ancestorDistance != b.ancestorDistance) return a.ancestorDistance < b.ancestorDistance;
+        return a.stableId < b.stableId;
+    });
+
+    if (candidates.size() > 1 &&
+        candidates[0].raycastOrder == candidates[1].raycastOrder &&
+        candidates[0].ancestorDistance == candidates[1].ancestorDistance &&
+        candidates[0].stableId != candidates[1].stableId) {
+        return {PickStatus::Ambiguous, -1};
+    }
+    return {PickStatus::Selected, candidates.front().index};
+}
+
 inline PickResult ChooseBestHit(std::vector<HitRank> hits, float areaEpsilon = 0.5f) {
     hits.erase(std::remove_if(hits.begin(), hits.end(), [](const HitRank& h) {
         return h.index < 0 || !std::isfinite(h.area) || h.area <= 0.0f;

@@ -19,8 +19,8 @@ using namespace tlprobe;
 
 namespace {
 
-constexpr wchar_t kWindowClass[] = L"ThanLongUiInternalProbeV01";
-constexpr wchar_t kWindowTitle[] = L"ThanLong UI Internal Probe v0.1.1 — RUNTIME PARTIAL";
+constexpr wchar_t kWindowClass[] = L"ThanLongUiInternalProbeV012";
+constexpr wchar_t kWindowTitle[] = L"ThanLong UI Internal Probe v0.1.2 — DIRECT RETEST";
 constexpr wchar_t kGameModule[] = L"GameAssembly.dll";
 constexpr int kHotkeyPick = 1;
 constexpr UINT_PTR kEvidenceTimer = 0x501;
@@ -34,8 +34,6 @@ enum ControlId : int {
     IDC_LIST,
     IDC_DETAIL,
     IDC_TEST_DIRECT,
-    IDC_TEST_INPUTSYNC,
-    IDC_TEST_BAG,
     IDC_LOG,
     IDC_STATUS,
 };
@@ -274,7 +272,6 @@ std::vector<std::uint64_t> Identities(const UiSnapshot& snapshot) {
 
 struct PendingEvidence {
     bool active = false;
-    bool verifySemanticBag = false;
     std::wstring action;
     std::uint64_t targetId = 0;
     std::vector<std::uint64_t> beforeIds;

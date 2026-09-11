@@ -153,8 +153,7 @@ void PickAtCursor(Command command) {
     std::wstring diagnostic, error;
     if (!CurrentNormalizedPoint(x, y, diagnostic, error)) { Log(L"F8 PICK FAIL • " + error); return; }
 
-    // A successful coordinate capture is useful even when semantic/geometry identification fails.
-    // This lets TEST INPUTSYNC exercise the client's own EventSystem raycast at the exact F8 point.
+    // F8 is selection-only. The bridge now uses Unity EventSystem.RaycastAll to identify the live target.
     g_app.pointValid = true;
     g_app.pointX = x;
     g_app.pointY = y;
@@ -162,8 +161,7 @@ void PickAtCursor(Command command) {
     ProbeResponse response{};
     if (!g_app.bridge.Call(command, x, y, 0, response, error)) {
         const std::wstring captured = L"F8 POINT CAPTURED — chưa dispatch action\r\n" + diagnostic +
-                                      L"\r\nUI pick: FAIL • " + error +
-                                      L"\r\nTEST INPUTSYNC vẫn có thể dùng điểm này.";
+                                      L"\r\nEVENTSYSTEM PICK: FAIL • " + error;
         SetWindowTextW(g_app.detail, captured.c_str());
         Log(L"F8 POINT CAPTURED • " + diagnostic + L" • UI PICK FAIL: " + error);
         return;
@@ -183,12 +181,11 @@ void ManualScan() {
 }
 
 void ScheduleEvidence(const std::wstring& action, std::uint64_t targetId,
-                      const UiSnapshot& before, bool verifySemanticBag) {
+                      const UiSnapshot& before) {
     g_app.evidence.active = true;
     g_app.evidence.action = action;
     g_app.evidence.targetId = targetId;
     g_app.evidence.beforeIds = Identities(before);
-    g_app.evidence.verifySemanticBag = verifySemanticBag;
     SetTimer(g_app.window, kEvidenceTimer, 250, nullptr);
 }
 
@@ -205,21 +202,7 @@ void RunPointAction(Command command, const wchar_t* label) {
     g_app.lastPicked = response.picked;
     ShowRowDetail(response.picked, label);
     Log(std::wstring(response.detail) + L" • waiting for fresh state proof (timer is observation delay, not success proof)");
-    ScheduleEvidence(label, response.picked.identity, before, false);
-}
-
-void RunSemanticBag() {
-    UiSnapshot before{};
-    std::wstring scanError;
-    (void)ScanSnapshot(before, false, scanError);
-    ProbeResponse response{};
-    std::wstring error;
-    if (!g_app.bridge.Call(Command::SemanticOpenBag, 0, 0, 0, response, error)) {
-        Log(L"TEST BAG SEMANTIC FAIL • " + error);
-        return;
-    }
-    Log(std::wstring(response.detail) + L" • waiting for fresh semantic/UI proof");
-    ScheduleEvidence(L"TEST BAG SEMANTIC", 0, before, true);
+    ScheduleEvidence(label, response.picked.identity, before);
 }
 
 void CompleteEvidence() {
@@ -247,14 +230,6 @@ void CompleteEvidence() {
                                      (targetStillPresent ? L" STILL-PRESENT" : L" NOT-PRESENT");
     Log(summary);
 
-    if (evidence.verifySemanticBag) {
-        ProbeResponse verify{};
-        std::wstring verifyError;
-        if (g_app.bridge.Call(Command::SemanticOpenBag, 1, 0, 0, verify, verifyError))
-            Log(std::wstring(verify.detail) + L" • semantic state proof");
-        else
-            Log(L"TEST BAG SEMANTIC VERIFY FAIL • " + verifyError);
-    }
 }
 
 void OnListSelection() {
@@ -288,15 +263,13 @@ void CreateUi(HWND hwnd) {
     g_app.detail = MakeControl(L"EDIT", L"Nhấn F8 khi con trỏ nằm trên UI cần probe. F8 KHÔNG CLICK.",
                                ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY | WS_VSCROLL | WS_BORDER,
                                12, 502, 835, 142, IDC_DETAIL);
-    MakeControl(L"BUTTON", L"TEST DIRECT", BS_PUSHBUTTON, 860, 506, 170, 36, IDC_TEST_DIRECT);
-    MakeControl(L"BUTTON", L"TEST INPUTSYNC", BS_PUSHBUTTON, 1040, 506, 180, 36, IDC_TEST_INPUTSYNC);
-    MakeControl(L"BUTTON", L"TEST BAG SEMANTIC", BS_PUSHBUTTON, 1230, 506, 187, 36, IDC_TEST_BAG);
+    MakeControl(L"BUTTON", L"TEST DIRECT", BS_PUSHBUTTON, 860, 506, 220, 36, IDC_TEST_DIRECT);
 
     MakeControl(L"STATIC", L"Log:", 0, 860, 555, 50, 20, 0);
     g_app.log = MakeControl(L"EDIT", L"", ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY | WS_VSCROLL | WS_BORDER,
                             860, 578, 557, 170, IDC_LOG);
     MakeControl(L"STATIC",
-                L"Probe v0.1.1: Scan -> F8 pick -> explicit test. Không giữ pointer UI cũ. State proof dùng fresh scan/semantic verify.",
+                L"Probe v0.1.2: F8 dùng EventSystem.RaycastAll -> map UIObject -> TEST DIRECT. Không gọi Bag Semantic/InputSync test.",
                 SS_LEFT, 12, 656, 820, 44, 0);
 }
 
@@ -315,8 +288,6 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 case IDC_ATTACH: AttachSelected(); break;
                 case IDC_SCAN: ManualScan(); break;
                 case IDC_TEST_DIRECT: RunPointAction(Command::DirectInvokeAtPoint, L"TEST DIRECT"); break;
-                case IDC_TEST_INPUTSYNC: RunPointAction(Command::InputSyncClickAtPoint, L"TEST INPUTSYNC"); break;
-                case IDC_TEST_BAG: RunSemanticBag(); break;
                 default: break;
             }
             return 0;

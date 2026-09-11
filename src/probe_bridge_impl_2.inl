@@ -81,11 +81,27 @@ struct UiRuntime {
     const Il2CppImage* coreImage = nullptr;
     const Il2CppImage* uiModuleImage = nullptr;
     const Il2CppImage* legacyUnityImage = nullptr;
+    const Il2CppImage* eventSystemsImage = nullptr;
     Il2CppClass* unityRectTransform = nullptr;
     Il2CppClass* unityTransform = nullptr;
     Il2CppClass* unityGameObject = nullptr;
     Il2CppClass* rectTransformUtility = nullptr;
     Il2CppClass* unityScreen = nullptr;
+
+    bool eventSystemReady = false;
+    Il2CppClass* eventSystem = nullptr;
+    Il2CppClass* pointerEventData = nullptr;
+    Il2CppClass* raycastListClass = nullptr;
+    Il2CppClass* raycastResultClass = nullptr;
+    const MethodInfo* eventGetCurrent = nullptr;
+    const MethodInfo* eventRaycastAll = nullptr;
+    const MethodInfo* pointerCtor = nullptr;
+    const MethodInfo* pointerSetPosition = nullptr;
+    const MethodInfo* raycastListCtor = nullptr;
+    const MethodInfo* raycastListCount = nullptr;
+    const MethodInfo* raycastListGetItem = nullptr;
+    FieldInfo* raycastResultGameObject = nullptr;
+    const MethodInfo* raycastResultGetGameObject = nullptr;
 
     Il2CppClass* inputSyncManager = nullptr;
     const MethodInfo* inputGetInstance = nullptr;
@@ -300,6 +316,7 @@ void OpenUnityImages() {
     if (!g_ui.coreImage) g_ui.coreImage = ImageForAssembly("UnityEngine.CoreModule", "UnityEngine.CoreModule.dll");
     if (!g_ui.uiModuleImage) g_ui.uiModuleImage = ImageForAssembly("UnityEngine.UIModule", "UnityEngine.UIModule.dll");
     if (!g_ui.legacyUnityImage) g_ui.legacyUnityImage = ImageForAssembly("UnityEngine", "UnityEngine.dll");
+    if (!g_ui.eventSystemsImage) g_ui.eventSystemsImage = ImageForAssembly("UnityEngine.UI", "UnityEngine.UI.dll");
 }
 
 Il2CppClass* ResolveGeometryClass(GeometryClass role) {

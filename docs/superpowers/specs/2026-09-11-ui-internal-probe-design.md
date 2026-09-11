@@ -1,5 +1,8 @@
 # Thần Long UI Internal Probe v0.1 — Design
 
+> **Historical v0.1 design. Superseded for runtime targeting by v0.1.2 EventSystem-RayCast direct resolver; Bag Semantic and visible InputSync tests are retired.**
+
+
 ## Goal
 Create a minimal Windows x64 probe derived from the proven v9.9 runtime bridge. It must discover currently active Thần Long UI objects even when they have no visible text, select the control under the mouse without clicking it, invoke the same control through two independent internal paths, and record before/after UI evidence.
 

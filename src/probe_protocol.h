@@ -7,7 +7,7 @@
 namespace tlprobe {
 
 constexpr std::uint32_t kMagic = 0x42525054u; // TPRB
-constexpr std::uint32_t kProtocolVersion = 0x00010000u;
+constexpr std::uint32_t kProtocolVersion = 0x00010200u;
 constexpr UINT kWakeMessage = WM_APP + 0x641;
 constexpr wchar_t kMappingPrefix[] = L"Local\\ThanLongUiProbe_";
 constexpr int kCoordinateScale = 100000;
@@ -19,7 +19,6 @@ enum class Command : std::uint32_t {
     PickAtPoint = 2,
     DirectInvokeAtPoint = 3,
     InputSyncClickAtPoint = 4,
-    SemanticOpenBag = 5,
 };
 
 enum class UiKind : std::int32_t {
@@ -37,8 +36,6 @@ enum class ResultCode : std::int32_t {
     Ambiguous = 3,
     DirectDispatched = 4,
     InputSyncDispatched = 5,
-    SemanticDispatched = 6,
-    SemanticVerified = 7,
 };
 
 struct UiRow {

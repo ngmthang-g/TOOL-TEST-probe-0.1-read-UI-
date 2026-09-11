@@ -1,41 +1,36 @@
-# PROJECT KNOWLEDGE — ThanLong UI Internal Probe
+# Project Knowledge — ThanLong UI Internal Probe
 
-## Project identity
-- Version: 0.1.1-probe
-- Platform: Windows x64
-- Purpose: runtime discovery and controlled internal activation tests for unnamed Thần Long UI controls.
-- Donor: v9.9 V20 controller/bridge architecture, intentionally stripped to probe-only scope.
+## Current
 
-## Current state
-- Source contract tests: PASS locally.
-- Platform-neutral hit ranking/snapshot diff test: PASS locally.
-- Windows MSVC build: v0.1.1 BUILD PASS (`34614089454`): source-contract, CMake x64, MSVC Release, native CTest, artifact upload and dist publication all passed.
-- Published binaries: `dist/ProbeController.exe`, `dist/ProbeBridge.dll`, `dist/ThanLong-UI-Internal-Probe-v0.1.1-win-x64.zip`.
-- Binary publication commit: `34127929b86a7117140421ba781e605475ed5d49`.
-- Runtime on real game: SCAN PASS; v0.1.0 F8 failed; v0.1.1 F8 retest required.
+- Version: `0.1.2-probe`
+- Repo: `ngmthang-g/TOOL-TEST-probe-0.1-read-UI-`
+- Scope: runtime UI discovery + EventSystem target mapping + direct callback invocation only.
+- Build: pending Windows MSVC verification for v0.1.2.
+- Live evidence inherited from v0.1.1: scan PASS; F8 coordinate conversion PASS; old RectTransform geometry resolver failed with `hits=0`; donor InputSync works but is not a v0.1.2 test objective.
+- `TEST BAG SEMANTIC` is retired after live bridge timeout/game diss.
 
-## Architecture
-`Controller -> shared memory -> WH_GETMESSAGE game thread hook -> ProbeBridge -> current UI re-scan -> one probe action -> fresh snapshot / semantic verify`.
+## v0.1.2 resolver contract
 
-Five commands only: `ScanUi`, `PickAtPoint`, `DirectInvokeAtPoint`, `InputSyncClickAtPoint`, `SemanticOpenBag`.
+1. Controller captures DPI-correct client point with F8.
+2. Bridge builds Unity screen point.
+3. `EventSystem.current.RaycastAll(PointerEventData, List<RaycastResult>)` obtains actual Unity raycast GameObjects.
+4. Probe enumerates fresh `UIObject.instances`, resolves each UI object's GameObject, and maps raycast GameObject/Transform ancestors to those live objects.
+5. Prefer direct-callable target by raycast order then nearest ancestor distance; ties fail closed.
+6. F8 never dispatches action.
+7. `TEST DIRECT` repeats the raycast/map and invokes only the fresh target:
+   - UIButton -> `HandleClickEvent()`
+   - UIToggle -> selected/select callback
+   - UIRectTransform -> Lua PointerClickHandler
+8. Never persist a UI pointer between scans/transitions.
 
-## Hard rules
-- F8 selects only; it never dispatches a click/action.
-- Never cache a live UI pointer across UI transitions.
-- Direct and InputSync tests re-resolve the current control at the saved normalized point.
-- Equal-rank hit candidates fail closed as AMBIGUOUS.
-- Time delay is not success evidence; use fresh UI/semantic state.
-- Runtime cannot be marked PASS until tested against the game.
+## Protocol
 
-## Runtime evidence needed
-1. SCAN ACTIVE UI returns meaningful active controls.
-2. F8 over a visible X/icon resolves the expected object without acting.
-3. TEST DIRECT causes the intended UI transition and evidence reflects it.
-4. TEST INPUTSYNC causes the intended UI transition with drag state clean.
-5. TEST BAG SEMANTIC opens/verifies `RoleInfo_BagTab`.
+Visible workflow uses `ScanUi`, `PickAtPoint`, `DirectInvokeAtPoint`. `InputSyncClickAtPoint` remains internal source compatibility/reference only and has no controller button. No semantic bag command exists.
 
-## v0.1.1 F8 diagnosis
-- Runtime evidence: `SCAN ACTIVE UI total=221 rows=160 TRUNCATED` proves UI discovery is live.
-- v0.1.0 controller had no explicit DPI-awareness setup; cursor/client coordinate virtualization can cause outside-client and scaled normalized points.
-- v0.1.0 F8 filtered `directCallable` before geometry hit-test, excluding visible `UIText/UIImage` children.
-- v0.1.1 separates visual selection from mutation target resolution. InputSync uses the client's own EventSystem raycast and is no longer blocked by direct-callback discovery.
+## Runtime acceptance for this iteration
+
+A successful live target test should show:
+- F8: `raycastHits > 0`, `mapped > 0`, and preferably `callableMapped > 0` with correct target identity.
+- Direct: `DIRECT DISPATCH PASS • EventSystem re-raycast -> UIObject -> callback` and the intended UI transition occurs.
+
+Build/CI success alone is not runtime proof.

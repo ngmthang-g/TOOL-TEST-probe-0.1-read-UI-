@@ -1,5 +1,8 @@
 # Thần Long UI Internal Probe v0.1 Implementation Plan
 
+> **Historical v0.1 design. Superseded for runtime targeting by v0.1.2 EventSystem-RayCast direct resolver; Bag Semantic and visible InputSync tests are retired.**
+
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build a minimal v9.9-derived Windows probe that discovers unnamed active UI, picks the exact control under F8, tests direct callback versus InputSync, and records UI snapshot evidence.

@@ -23,12 +23,12 @@ jobs:
         run: |
           $p = 'src/probe_bridge_impl_1.inl'
           $s = Get-Content $p -Raw
-          $old = "    void* (__cdecl* object_unbox)(Il2CppObject*) = nullptr;`n    Il2CppClass* (__cdecl* object_get_class)(Il2CppObject*) = nullptr;"
-          $new = "    void* (__cdecl* object_unbox)(Il2CppObject*) = nullptr;`n    Il2CppObject* (__cdecl* object_new)(Il2CppClass*) = nullptr;`n    Il2CppClass* (__cdecl* object_get_class)(Il2CppObject*) = nullptr;"
           if ($s -notmatch 'object_new\)\(Il2CppClass\*\)') {
-            if (-not $s.Contains($old)) { throw 'Expected Api insertion point not found' }
-            $s = $s.Replace($old, $new)
-            [System.IO.File]::WriteAllText($p, $s, [System.Text.UTF8Encoding]::new($false))
+            $pattern = '(?m)^(\s*void\* \(__cdecl\* object_unbox\)\(Il2CppObject\*\) = nullptr;\r?\n)'
+            $replacement = '${1}    Il2CppObject* (__cdecl* object_new)(Il2CppClass*) = nullptr;' + [Environment]::NewLine
+            $patched = [regex]::Replace($s, $pattern, $replacement, 1)
+            if ($patched -eq $s) { throw 'Expected Api insertion point not found' }
+            [System.IO.File]::WriteAllText($p, $patched, [System.Text.UTF8Encoding]::new($false))
           }
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"

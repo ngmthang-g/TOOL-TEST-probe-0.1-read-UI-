@@ -5,7 +5,8 @@ Mini probe tách từ nền 9.9, chỉ phục vụ đọc UI runtime và thử *
 ## Trạng thái
 
 - Version: `0.1.2-probe`
-- Build: **BUILD PENDING** cho patch EventSystem direct resolver.
+- Build: **BUILD PASS** trên Windows/MSVC x64.
+- Windows build run: `34621857069` — Configure x64, Build Release, native CTest, artifact upload và publish `dist/` đều PASS.
 - Runtime đã biết: **SCAN PASS** (`SCAN ACTIVE UI`) trên client thật; InputSync của donor 9.9 là baseline đã biết hoạt động và không phải mục tiêu cần chứng minh lại.
 - Runtime cần retest: F8 EventSystem target mapping + `TEST DIRECT`.
 
@@ -49,6 +50,6 @@ cmake --build build --config Release
 ctest --test-dir build -C Release --output-on-failure
 ```
 
-GitHub Actions Windows x64 sẽ tạo artifact `ThanLong-UI-Internal-Probe-v0.1.2-win-x64` và publish EXE/DLL/ZIP vào `dist/` sau khi CI pass.
+GitHub Actions Windows x64 tạo artifact `ThanLong-UI-Internal-Probe-v0.1.2-win-x64` và publish EXE/DLL/ZIP vào `dist/`.
 
 Build pass không đồng nghĩa Direct runtime pass; trạng thái runtime chỉ được nâng sau live evidence trên client thật.

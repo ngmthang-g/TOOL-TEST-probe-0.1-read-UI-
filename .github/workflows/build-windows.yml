@@ -49,7 +49,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ThanLong-UI-Internal-Probe-v0.1-win-x64
+          name: ThanLong-UI-Internal-Probe-v0.1.1-win-x64
           path: artifact/
           if-no-files-found: error
 
@@ -60,10 +60,10 @@ jobs:
           New-Item -ItemType Directory -Force dist | Out-Null
           Copy-Item artifact/ProbeController.exe dist/ProbeController.exe
           Copy-Item artifact/ProbeBridge.dll dist/ProbeBridge.dll
-          Compress-Archive -Path artifact/* -DestinationPath dist/ThanLong-UI-Internal-Probe-v0.1-win-x64.zip -Force
+          Compress-Archive -Path artifact/* -DestinationPath dist/ThanLong-UI-Internal-Probe-v0.1.1-win-x64.zip -Force
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add dist
           if (git diff --cached --quiet) { exit 0 }
-          git commit -m "build: publish probe v0.1 binaries [skip ci]"
+          git commit -m "build: publish probe v0.1.1 binaries [skip ci]"
           git push

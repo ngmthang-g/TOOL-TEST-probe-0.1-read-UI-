@@ -107,6 +107,7 @@ struct Api {
     void (__cdecl* free_fn)(void*) = nullptr;
     Il2CppObject* (__cdecl* runtime_invoke)(const MethodInfo*, void*, void**, void**) = nullptr;
     void* (__cdecl* object_unbox)(Il2CppObject*) = nullptr;
+    Il2CppObject* (__cdecl* object_new)(Il2CppClass*) = nullptr;
     Il2CppClass* (__cdecl* object_get_class)(Il2CppObject*) = nullptr;
     FieldInfo* (__cdecl* class_get_field_from_name)(Il2CppClass*, const char*) = nullptr;
     const Il2CppType* (__cdecl* field_get_type)(FieldInfo*) = nullptr;

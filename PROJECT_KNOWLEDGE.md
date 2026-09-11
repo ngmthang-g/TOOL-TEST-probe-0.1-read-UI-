@@ -5,9 +5,10 @@
 - Version: `0.1.2-probe`
 - Repo: `ngmthang-g/TOOL-TEST-probe-0.1-read-UI-`
 - Scope: runtime UI discovery + EventSystem target mapping + direct callback invocation only.
-- Build: pending Windows MSVC verification for v0.1.2.
+- Build: **PASS** on Windows/MSVC x64. Final successful build run: `34621857069`.
 - Live evidence inherited from v0.1.1: scan PASS; F8 coordinate conversion PASS; old RectTransform geometry resolver failed with `hits=0`; donor InputSync works but is not a v0.1.2 test objective.
 - `TEST BAG SEMANTIC` is retired after live bridge timeout/game diss.
+- Runtime remains `EVENTSYSTEM_DIRECT_RETEST_REQUIRED` until live F8 + Direct evidence is collected.
 
 ## v0.1.2 resolver contract
 
@@ -26,6 +27,16 @@
 ## Protocol
 
 Visible workflow uses `ScanUi`, `PickAtPoint`, `DirectInvokeAtPoint`. `InputSyncClickAtPoint` remains internal source compatibility/reference only and has no controller button. No semantic bag command exists.
+
+## Verification evidence
+
+- Source contract tests: PASS on Windows runner.
+- CMake x64 configure: PASS.
+- MSVC Release build: PASS.
+- Native CTest: PASS.
+- Artifact upload: PASS.
+- `dist/` publication: PASS.
+- Final successful workflow run: `34621857069`.
 
 ## Runtime acceptance for this iteration
 

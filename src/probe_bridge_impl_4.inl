@@ -1,6 +1,3 @@
-    return true;
-}
-
 bool ExecutorInstance(Il2CppObject*& instance, const MethodInfo*& execute, wchar_t* detail, std::size_t cap) {
     instance = nullptr; execute = nullptr;
     if (!EnsureUiLua(false, detail, cap)) return false;
@@ -48,22 +45,21 @@ bool InvokeControl(UiControl& control, wchar_t* detail, std::size_t cap) {
 }
 
 bool PickAtPoint(int x, int y, ProbeResponse& response, wchar_t* detail, std::size_t cap) {
-    UiControl selected{}; bool ambiguous = false;
-    if (!FindControlAtPoint(x, y, selected, ambiguous, detail, cap)) {
-        if (ambiguous) response.resultCode = static_cast<std::int32_t>(ResultCode::Ambiguous);
-        return false;
-    }
+    UiControl selected{}; PointHitStats stats{};
+    if (!FindVisualAtPoint(x, y, selected, stats, detail, cap)) return false;
     FillRow(selected, response.picked);
     response.resultCode = static_cast<std::int32_t>(ResultCode::Picked);
-    SetText(detail, cap, L"F8 PICK PASS • ");
+    SetText(detail, cap, L"F8 PICK PASS • visual ");
     Append(detail, cap, response.picked.className);
     Append(detail, cap, L" • Name="); Append(detail, cap, response.picked.name);
+    Append(detail, cap, response.picked.directCallable ? L" • DIRECT" : L" • visual child/non-callable");
+    AppendHitStats(detail, cap, stats);
     return true;
 }
 
 bool DirectInvokeAtPoint(int x, int y, ProbeResponse& response, wchar_t* detail, std::size_t cap) {
     UiControl selected{}; bool ambiguous = false;
-    if (!FindControlAtPoint(x, y, selected, ambiguous, detail, cap)) {
+    if (!FindDirectControlAtPoint(x, y, selected, ambiguous, detail, cap)) {
         if (ambiguous) response.resultCode = static_cast<std::int32_t>(ResultCode::Ambiguous);
         return false;
     }
@@ -109,12 +105,10 @@ void CancelDrag(Il2CppObject* manager) {
 }
 
 bool InputSyncClickAtPoint(int x, int y, ProbeResponse& response, wchar_t* detail, std::size_t cap) {
-    UiControl selected{}; bool ambiguous = false;
-    if (!FindControlAtPoint(x, y, selected, ambiguous, detail, cap)) {
-        if (ambiguous) response.resultCode = static_cast<std::int32_t>(ResultCode::Ambiguous);
-        return false;
-    }
-    FillRow(selected, response.picked);
+    // InputSync owns the real Unity EventSystem raycast. Do not block it on direct-callback discovery.
+    UiControl visual{}; PointHitStats visualStats{}; wchar_t visualDetail[256]{};
+    if (FindVisualAtPoint(x, y, visual, visualStats, visualDetail, _countof(visualDetail)))
+        FillRow(visual, response.picked);
     if (!EnsureInputSync(detail, cap)) return false;
     UnityVector2 point{}; const MethodInfo* ignoredContains = nullptr;
     if (!BuildUnityScreenPoint(x, y, point, ignoredContains, detail, cap)) return false;

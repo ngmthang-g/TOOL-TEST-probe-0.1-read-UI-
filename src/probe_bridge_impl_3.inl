@@ -304,27 +304,139 @@ bool ScanUi(ProbeResponse& response, wchar_t* detail, std::size_t cap) {
     return true;
 }
 
-bool FindControlAtPoint(int normalizedX, int normalizedY, UiControl& selected,
-                        bool& ambiguous, wchar_t* detail, std::size_t cap) {
-    ambiguous = false;
-    UnityVector2 point{}; const MethodInfo* contains = nullptr;
-    if (!BuildUnityScreenPoint(normalizedX, normalizedY, point, contains, detail, cap)) return false;
-    std::vector<UiControl> objects;
+struct PointHitStats {
+    int totalObjects = 0;
+    int geometryObjects = 0;
+    int visualHits = 0;
+    int callableHits = 0;
+    UnityVector2 unityPoint{};
+};
+
+bool CollectPointHits(int normalizedX, int normalizedY,
+                      std::vector<UiControl>& objects,
+                      std::vector<int>& hitIndices,
+                      PointHitStats& stats,
+                      wchar_t* detail, std::size_t cap) {
+    hitIndices.clear();
+    stats = {};
+    const MethodInfo* contains = nullptr;
+    if (!BuildUnityScreenPoint(normalizedX, normalizedY, stats.unityPoint, contains, detail, cap)) return false;
     if (!EnumerateActiveUiObjects(objects, detail, cap)) return false;
-    std::vector<probe_logic::HitRank> hits;
+    stats.totalObjects = static_cast<int>(objects.size());
     for (std::size_t i = 0; i < objects.size(); ++i) {
         UiControl& control = objects[i];
-        if (!control.directCallable || !control.hasGeometry) continue;
+        if (!control.hasGeometry) continue;
+        ++stats.geometryObjects;
         Il2CppObject* rectTransform = nullptr;
         if (!ResolveRectTransform(control.object, control.klass, rectTransform)) continue;
-        if (!RectContainsScreenPoint(rectTransform, point, contains)) continue;
-        hits.push_back({static_cast<int>(i), control.area, control.depth, control.identity});
+        if (!RectContainsScreenPoint(rectTransform, stats.unityPoint, contains)) continue;
+        hitIndices.push_back(static_cast<int>(i));
+        ++stats.visualHits;
+        if (control.directCallable) ++stats.callableHits;
     }
-    const auto pick = probe_logic::ChooseHit(hits);
-    if (pick.status == probe_logic::PickStatus::Ambiguous) {
-        ambiguous = true; SetText(detail, cap, L"AMBIGUOUS • hai control nội bộ đồng hạng; fail-closed"); return false;
+    return true;
+}
+
+void AppendHitStats(wchar_t* detail, std::size_t cap, const PointHitStats& stats) {
+    Append(detail, cap, L" • objects="); AppendInt(detail, cap, stats.totalObjects);
+    Append(detail, cap, L" geometry="); AppendInt(detail, cap, stats.geometryObjects);
+    Append(detail, cap, L" hits="); AppendInt(detail, cap, stats.visualHits);
+    Append(detail, cap, L" callableHits="); AppendInt(detail, cap, stats.callableHits);
+    Append(detail, cap, L" UnityScreenPoint=");
+    wchar_t pointText[96]{};
+    swprintf_s(pointText, L"%.1f,%.1f", stats.unityPoint.x, stats.unityPoint.y);
+    Append(detail, cap, pointText);
+}
+
+bool FindVisualAtPoint(int normalizedX, int normalizedY, UiControl& selected,
+                       PointHitStats& stats, wchar_t* detail, std::size_t cap) {
+    std::vector<UiControl> objects;
+    std::vector<int> hitIndices;
+    if (!CollectPointHits(normalizedX, normalizedY, objects, hitIndices, stats, detail, cap)) return false;
+
+    std::vector<probe_logic::HitRank> hits;
+    hits.reserve(hitIndices.size());
+    for (int index : hitIndices) {
+        if (index < 0 || static_cast<std::size_t>(index) >= objects.size()) continue;
+        const UiControl& control = objects[static_cast<std::size_t>(index)];
+        hits.push_back({index, control.area, control.depth, control.identity});
     }
-    if (pick.status != probe_logic::PickStatus::Selected || pick.index < 0 || static_cast<std::size_t>(pick.index) >= objects.size()) {
-        SetText(detail, cap, L"Không có control callable tại điểm F8"); return false;
+    const auto pick = probe_logic::ChooseBestHit(hits);
+    if (pick.status != probe_logic::PickStatus::Selected || pick.index < 0 ||
+        static_cast<std::size_t>(pick.index) >= objects.size()) {
+        SetText(detail, cap, L"Không có visual UI geometry tại điểm F8");
+        AppendHitStats(detail, cap, stats);
+        return false;
     }
     selected = std::move(objects[static_cast<std::size_t>(pick.index)]);
+    return true;
+}
+
+bool FindCallableAncestor(const UiControl& visual, UiControl& selected) {
+    Il2CppObject* current = visual.object;
+    std::vector<Il2CppObject*> seen;
+    for (int depth = 0; depth < 24 && current; ++depth) {
+        if (std::find(seen.begin(), seen.end(), current) != seen.end()) break;
+        seen.push_back(current);
+        Il2CppClass* klass = g_api.object_get_class(current);
+        Il2CppObject* parent = nullptr;
+        if (!klass || !ObjectGetter(current, klass, "get_Parent", parent) || !parent) break;
+        UiControl candidate{};
+        if (ReadOneControl(parent, candidate, false) && candidate.directCallable) {
+            selected = std::move(candidate);
+            return true;
+        }
+        current = parent;
+    }
+    return false;
+}
+
+bool FindDirectControlAtPoint(int normalizedX, int normalizedY, UiControl& selected,
+                              bool& ambiguous, wchar_t* detail, std::size_t cap) {
+    ambiguous = false;
+    std::vector<UiControl> objects;
+    std::vector<int> hitIndices;
+    PointHitStats stats{};
+    if (!CollectPointHits(normalizedX, normalizedY, objects, hitIndices, stats, detail, cap)) return false;
+
+    std::vector<probe_logic::HitRank> visualRanks;
+    visualRanks.reserve(hitIndices.size());
+    for (int index : hitIndices) {
+        if (index < 0 || static_cast<std::size_t>(index) >= objects.size()) continue;
+        const UiControl& control = objects[static_cast<std::size_t>(index)];
+        visualRanks.push_back({index, control.area, control.depth, control.identity});
+    }
+    const auto visualPick = probe_logic::ChooseBestHit(visualRanks);
+    if (visualPick.status == probe_logic::PickStatus::Selected && visualPick.index >= 0 &&
+        static_cast<std::size_t>(visualPick.index) < objects.size()) {
+        UiControl& visual = objects[static_cast<std::size_t>(visualPick.index)];
+        if (visual.directCallable) {
+            selected = std::move(visual);
+            return true;
+        }
+        if (FindCallableAncestor(visual, selected)) return true;
+    }
+
+    std::vector<probe_logic::HitRank> callableRanks;
+    for (int index : hitIndices) {
+        if (index < 0 || static_cast<std::size_t>(index) >= objects.size()) continue;
+        const UiControl& control = objects[static_cast<std::size_t>(index)];
+        if (!control.directCallable) continue;
+        callableRanks.push_back({index, control.area, control.depth, control.identity});
+    }
+    const auto callablePick = probe_logic::ChooseHit(callableRanks);
+    if (callablePick.status == probe_logic::PickStatus::Ambiguous) {
+        ambiguous = true;
+        SetText(detail, cap, L"AMBIGUOUS • nhiều callable control đồng hạng; direct fail-closed");
+        AppendHitStats(detail, cap, stats);
+        return false;
+    }
+    if (callablePick.status != probe_logic::PickStatus::Selected || callablePick.index < 0 ||
+        static_cast<std::size_t>(callablePick.index) >= objects.size()) {
+        SetText(detail, cap, L"Visual hit có thể tồn tại nhưng không resolve được callable parent/overlap");
+        AppendHitStats(detail, cap, stats);
+        return false;
+    }
+    selected = std::move(objects[static_cast<std::size_t>(callablePick.index)]);
+    return true;
+}

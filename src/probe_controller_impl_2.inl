@@ -93,7 +93,7 @@ void RefreshClients() {
         SendMessageW(g_app.clients, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(label.c_str()));
     }
     if (!g_app.games.empty()) SendMessageW(g_app.clients, CB_SETCURSEL, 0, 0);
-    SetStatus(L"RUNTIME UNTESTED • " + std::to_wstring(g_app.games.size()) + L" client(s) tìm thấy");
+    SetStatus(L"RUNTIME PARTIAL • " + std::to_wstring(g_app.games.size()) + L" client(s) tìm thấy");
     Log(L"REFRESH • tìm thấy " + std::to_wstring(g_app.games.size()) + L" client GameAssembly.dll");
 }
 
@@ -114,40 +114,63 @@ void AttachSelected() {
     Log(L"ATTACH PASS • PID " + std::to_wstring(game.pid) + L" • WH_GETMESSAGE game thread");
 }
 
-bool CurrentNormalizedPoint(int& x, int& y, std::wstring& error) {
+std::wstring PointDiagnostic(const POINT& screenPoint, const POINT& clientPoint,
+                           int width, int height, int normalizedX = -1, int normalizedY = -1) {
+    std::wstringstream ss;
+    ss << L"screen=" << screenPoint.x << L"," << screenPoint.y
+       << L" client=" << clientPoint.x << L"," << clientPoint.y
+       << L" size=" << width << L"x" << height;
+    if (normalizedX >= 0 && normalizedY >= 0)
+        ss << L" normalized=" << normalizedX << L"," << normalizedY;
+    return ss.str();
+}
+
+bool CurrentNormalizedPoint(int& x, int& y, std::wstring& diagnostic, std::wstring& error) {
     if (!g_app.bridge.Attached()) { error = L"Chưa attach client"; return false; }
-    POINT point{};
-    if (!GetCursorPos(&point)) { error = L"GetCursorPos thất bại"; return false; }
+    POINT screenPoint{};
+    if (!GetCursorPos(&screenPoint)) { error = L"GetCursorPos thất bại"; return false; }
+    POINT clientPoint = screenPoint;
     const GameClient& game = g_app.bridge.Game();
-    if (!ScreenToClient(game.window, &point)) { error = L"ScreenToClient thất bại"; return false; }
+    if (!ScreenToClient(game.window, &clientPoint)) { error = L"ScreenToClient thất bại"; return false; }
     RECT client{};
     if (!GetClientRect(game.window, &client)) { error = L"GetClientRect thất bại"; return false; }
     const int width = client.right - client.left;
     const int height = client.bottom - client.top;
-    if (width <= 0 || height <= 0 || point.x < 0 || point.y < 0 || point.x >= width || point.y >= height) {
-        error = L"Con trỏ không nằm trong client area game";
+    diagnostic = PointDiagnostic(screenPoint, clientPoint, width, height);
+    if (width <= 0 || height <= 0 || clientPoint.x < 0 || clientPoint.y < 0 ||
+        clientPoint.x >= width || clientPoint.y >= height) {
+        error = L"Con trỏ không nằm trong client area game • " + diagnostic;
         return false;
     }
-    x = static_cast<int>((static_cast<long long>(point.x) * kCoordinateScale) / width);
-    y = static_cast<int>((static_cast<long long>(point.y) * kCoordinateScale) / height);
+    x = static_cast<int>((static_cast<long long>(clientPoint.x) * kCoordinateScale) / width);
+    y = static_cast<int>((static_cast<long long>(clientPoint.y) * kCoordinateScale) / height);
+    diagnostic = PointDiagnostic(screenPoint, clientPoint, width, height, x, y);
     return true;
 }
 
 void PickAtCursor(Command command) {
     int x = 0, y = 0;
-    std::wstring error;
-    if (!CurrentNormalizedPoint(x, y, error)) { Log(L"F8 PICK FAIL • " + error); return; }
-    ProbeResponse response{};
-    if (!g_app.bridge.Call(command, x, y, 0, response, error)) {
-        Log(L"F8 PICK FAIL • " + error);
-        return;
-    }
+    std::wstring diagnostic, error;
+    if (!CurrentNormalizedPoint(x, y, diagnostic, error)) { Log(L"F8 PICK FAIL • " + error); return; }
+
+    // A successful coordinate capture is useful even when semantic/geometry identification fails.
+    // This lets TEST INPUTSYNC exercise the client's own EventSystem raycast at the exact F8 point.
     g_app.pointValid = true;
     g_app.pointX = x;
     g_app.pointY = y;
+
+    ProbeResponse response{};
+    if (!g_app.bridge.Call(command, x, y, 0, response, error)) {
+        const std::wstring captured = L"F8 POINT CAPTURED — chưa dispatch action\r\n" + diagnostic +
+                                      L"\r\nUI pick: FAIL • " + error +
+                                      L"\r\nTEST INPUTSYNC vẫn có thể dùng điểm này.";
+        SetWindowTextW(g_app.detail, captured.c_str());
+        Log(L"F8 POINT CAPTURED • " + diagnostic + L" • UI PICK FAIL: " + error);
+        return;
+    }
     g_app.lastPicked = response.picked;
     ShowRowDetail(response.picked, L"F8 PICK — chỉ chọn, chưa dispatch action");
-    Log(std::wstring(response.detail) + L" • normalized=" + std::to_wstring(x) + L"," + std::to_wstring(y));
+    Log(std::wstring(response.detail) + L" • " + diagnostic);
 }
 
 void ManualScan() {
@@ -255,7 +278,7 @@ void CreateUi(HWND hwnd) {
     MakeControl(L"BUTTON", L"Refresh", BS_PUSHBUTTON, 610, 7, 84, 28, IDC_REFRESH);
     MakeControl(L"BUTTON", L"Attach", BS_PUSHBUTTON, 702, 7, 84, 28, IDC_ATTACH);
     MakeControl(L"BUTTON", L"SCAN ACTIVE UI", BS_PUSHBUTTON, 798, 7, 136, 28, IDC_SCAN);
-    g_app.status = MakeControl(L"STATIC", L"RUNTIME UNTESTED", SS_LEFT, 948, 12, 470, 22, IDC_STATUS);
+    g_app.status = MakeControl(L"STATIC", L"RUNTIME PARTIAL", SS_LEFT, 948, 12, 470, 22, IDC_STATUS);
 
     g_app.list = MakeControl(WC_LISTVIEWW, L"", LVS_REPORT | LVS_SINGLESEL | WS_BORDER | WS_TABSTOP,
                              12, 45, 1405, 425, IDC_LIST);
@@ -273,7 +296,7 @@ void CreateUi(HWND hwnd) {
     g_app.log = MakeControl(L"EDIT", L"", ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY | WS_VSCROLL | WS_BORDER,
                             860, 578, 557, 170, IDC_LOG);
     MakeControl(L"STATIC",
-                L"Probe v0.1: Scan -> F8 pick -> explicit test. Không giữ pointer UI cũ. State proof dùng fresh scan/semantic verify.",
+                L"Probe v0.1.1: Scan -> F8 pick -> explicit test. Không giữ pointer UI cũ. State proof dùng fresh scan/semantic verify.",
                 SS_LEFT, 12, 656, 820, 44, 0);
 }
 

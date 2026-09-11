@@ -1,5 +1,26 @@
 # CHANGELOG
 
+## [0.1.1-probe] - 2026-09-11
+
+### Runtime evidence from v0.1.0
+- `SCAN ACTIVE UI`: PASS on real game (`total=221`, `rows=160`, truncated).
+- F8: FAIL with both `cursor outside client area` and `no callable control at F8`.
+
+### Fixed
+- Enable per-monitor-v2 DPI awareness before creating the controller window.
+- F8 geometry hit-test now considers visual UI objects, not only direct-callable controls.
+- Resolve nearest callable parent for direct action; fall back to callable overlap with ambiguity fail-closed.
+- Preserve valid F8 point even when visual identity lookup fails so InputSync can test the client EventSystem raycast.
+- InputSync no longer requires direct-control discovery before calling `TryClickUI -> EndUIDrag`.
+- Add point/Unity hit-count diagnostics.
+
+### Status
+- Local source contract: PASS.
+- Local native logic test: PASS.
+- Windows CI: PENDING.
+- Runtime: SCAN PASS; F8 RETEST REQUIRED.
+
+
 ## [0.1.0-probe] - 2026-09-11
 
 ### Requested

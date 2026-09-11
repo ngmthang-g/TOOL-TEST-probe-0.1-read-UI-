@@ -20,7 +20,7 @@ using namespace tlprobe;
 namespace {
 
 constexpr wchar_t kWindowClass[] = L"ThanLongUiInternalProbeV01";
-constexpr wchar_t kWindowTitle[] = L"ThanLong UI Internal Probe v0.1 — RUNTIME UNTESTED";
+constexpr wchar_t kWindowTitle[] = L"ThanLong UI Internal Probe v0.1.1 — RUNTIME PARTIAL";
 constexpr wchar_t kGameModule[] = L"GameAssembly.dll";
 constexpr int kHotkeyPick = 1;
 constexpr UINT_PTR kEvidenceTimer = 0x501;

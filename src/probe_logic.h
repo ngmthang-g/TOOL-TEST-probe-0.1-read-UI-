@@ -22,6 +22,20 @@ struct PickResult {
     int index = -1;
 };
 
+inline PickResult ChooseBestHit(std::vector<HitRank> hits, float areaEpsilon = 0.5f) {
+    hits.erase(std::remove_if(hits.begin(), hits.end(), [](const HitRank& h) {
+        return h.index < 0 || !std::isfinite(h.area) || h.area <= 0.0f;
+    }), hits.end());
+    if (hits.empty()) return {};
+
+    std::stable_sort(hits.begin(), hits.end(), [areaEpsilon](const HitRank& a, const HitRank& b) {
+        if (std::fabs(a.area - b.area) > areaEpsilon) return a.area < b.area;
+        if (a.depth != b.depth) return a.depth > b.depth;
+        return a.stableId < b.stableId;
+    });
+    return {PickStatus::Selected, hits.front().index};
+}
+
 inline PickResult ChooseHit(std::vector<HitRank> hits, float areaEpsilon = 0.5f) {
     hits.erase(std::remove_if(hits.begin(), hits.end(), [](const HitRank& h) {
         return h.index < 0 || !std::isfinite(h.area) || h.area <= 0.0f;

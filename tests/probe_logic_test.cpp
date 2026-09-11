@@ -41,6 +41,15 @@ int main() {
         assert(r.status == PickStatus::None);
     }
     {
+        std::vector<HitRank> hits{
+            {11, 50.0f, 4, 900},
+            {12, 50.0f, 4, 100},
+        };
+        const PickResult r = ChooseBestHit(hits);
+        assert(r.status == PickStatus::Selected);
+        assert(r.index == 12);
+    }
+    {
         const std::vector<std::uint64_t> before{1, 2, 3};
         const std::vector<std::uint64_t> after{2, 3, 4, 5};
         const SnapshotDiff d = DiffIdentities(before, after);

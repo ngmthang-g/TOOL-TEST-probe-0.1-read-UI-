@@ -1,0 +1,77 @@
+name: fix-v012-build
+
+on:
+  push:
+    paths:
+      - '.fix-v012/READY'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch-build-publish:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout current v0.1.2 source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Patch missing il2cpp_object_new API member
+        shell: pwsh
+        run: |
+          $p = 'src/probe_bridge_impl_1.inl'
+          $s = Get-Content $p -Raw
+          $old = "    void* (__cdecl* object_unbox)(Il2CppObject*) = nullptr;`n    Il2CppClass* (__cdecl* object_get_class)(Il2CppObject*) = nullptr;"
+          $new = "    void* (__cdecl* object_unbox)(Il2CppObject*) = nullptr;`n    Il2CppObject* (__cdecl* object_new)(Il2CppClass*) = nullptr;`n    Il2CppClass* (__cdecl* object_get_class)(Il2CppObject*) = nullptr;"
+          if ($s -notmatch 'object_new\)\(Il2CppClass\*\)') {
+            if (-not $s.Contains($old)) { throw 'Expected Api insertion point not found' }
+            $s = $s.Replace($old, $new)
+            [System.IO.File]::WriteAllText($p, $s, [System.Text.UTF8Encoding]::new($false))
+          }
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add $p
+          if (-not (git diff --cached --quiet)) {
+            git commit -m "fix: declare il2cpp_object_new for EventSystem resolver [skip ci]"
+            git push
+          }
+
+      - name: Configure MSVC x64
+        run: cmake -S . -B build -A x64
+
+      - name: Build Release
+        run: cmake --build build --config Release
+
+      - name: Native tests
+        run: ctest --test-dir build -C Release --output-on-failure
+
+      - name: Stage artifact
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force artifact | Out-Null
+          Copy-Item build/bin/ProbeController.exe artifact/ProbeController.exe
+          Copy-Item build/bin/ProbeBridge.dll artifact/ProbeBridge.dll
+          Copy-Item README.md artifact/README.md
+          Copy-Item VERSION.txt artifact/VERSION.txt
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ThanLong-UI-Internal-Probe-v0.1.2-win-x64
+          path: artifact/
+          if-no-files-found: error
+
+      - name: Publish binaries to dist
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item artifact/ProbeController.exe dist/ProbeController.exe
+          Copy-Item artifact/ProbeBridge.dll dist/ProbeBridge.dll
+          Compress-Archive -Path artifact/* -DestinationPath dist/ThanLong-UI-Internal-Probe-v0.1.2-win-x64.zip -Force
+          git add dist
+          if (-not (git diff --cached --quiet)) {
+            git commit -m "build: publish probe v0.1.2 binaries [skip ci]"
+            git push
+          }

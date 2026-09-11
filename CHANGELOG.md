@@ -8,9 +8,10 @@
 - Loại bỏ `TEST BAG SEMANTIC` khỏi protocol/UI vì live test gây bridge timeout/game diss.
 - Gỡ nút test InputSync khỏi UI; InputSync donor chỉ còn baseline/reference nội bộ.
 - Protocol bump `0x00010200` để EXE/DLL v0.1.2 không trộn với bản cũ.
+- Fix compiler: bổ sung resolver `il2cpp_object_new` dùng cho EventSystem `PointerEventData/List` construction.
+- Windows/MSVC x64 final PASS — run `34621857069`: configure, Release build, native CTest, artifact upload và `dist/` publication đều thành công.
+- Binary publication commit: `5b2e135cd5d850d4b78473f1f25588fd5f47a5b8`.
 - Runtime status: `EVENTSYSTEM_DIRECT_RETEST_REQUIRED`.
-
-# CHANGELOG
 
 ## [0.1.1-probe] - 2026-09-11
 
@@ -31,7 +32,6 @@
 - Local native logic test: PASS.
 - Windows CI: PASS — run `34614089454`: source-contract, CMake x64 configure, MSVC Release build, native CTest, artifact upload and dist publication all succeeded.
 - Runtime: SCAN PASS; F8 RETEST REQUIRED.
-
 
 ## [0.1.0-probe] - 2026-09-11
 

@@ -6,7 +6,7 @@ Mini probe tách từ nền UI/bridge của tool 9.9 để kiểm tra **UI runti
 
 - Version: `0.1.1-probe`
 - Build target: Windows x64
-- Build: **BUILD PENDING** cho v0.1.1; v0.1.0 đã BUILD PASS trên GitHub Actions Windows x64.
+- Build: **BUILD PASS** cho v0.1.1 trên GitHub Actions Windows x64 (run `34614089454`).
 - Runtime: **SCAN PASS** trên client thật; F8 của v0.1.0 fail. v0.1.1 sửa DPI + visual-hit/callable-parent và cần retest F8.
 - Không cache `UIButton*` giữa các lần UI thay đổi; mỗi action re-scan/re-resolve object hiện tại.
 

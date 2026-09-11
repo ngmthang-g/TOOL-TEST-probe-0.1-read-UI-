@@ -17,7 +17,7 @@
 ### Status
 - Local source contract: PASS.
 - Local native logic test: PASS.
-- Windows CI: PENDING.
+- Windows CI: PASS — run `34614089454`: source-contract, CMake x64 configure, MSVC Release build, native CTest, artifact upload and dist publication all succeeded.
 - Runtime: SCAN PASS; F8 RETEST REQUIRED.
 
 

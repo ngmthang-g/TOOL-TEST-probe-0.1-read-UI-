@@ -9,9 +9,9 @@
 ## Current state
 - Source contract tests: PASS locally.
 - Platform-neutral hit ranking/snapshot diff test: PASS locally.
-- Windows MSVC build: v0.1.0 BUILD PASS (`34611065539`); v0.1.1 BUILD PENDING.
-- Published binaries: `dist/ProbeController.exe`, `dist/ProbeBridge.dll`, `dist/ThanLong-UI-Internal-Probe-v0.1-win-x64.zip`.
-- Binary publication commit: `858b2a4d9b7b0dc2fba5d2f1b8bb58c07a882d28`.
+- Windows MSVC build: v0.1.1 BUILD PASS (`34614089454`): source-contract, CMake x64, MSVC Release, native CTest, artifact upload and dist publication all passed.
+- Published binaries: `dist/ProbeController.exe`, `dist/ProbeBridge.dll`, `dist/ThanLong-UI-Internal-Probe-v0.1.1-win-x64.zip`.
+- Binary publication commit: `34127929b86a7117140421ba781e605475ed5d49`.
 - Runtime on real game: SCAN PASS; v0.1.0 F8 failed; v0.1.1 F8 retest required.
 
 ## Architecture

@@ -1,57 +1,74 @@
 from pathlib import Path
+import importlib.util
 import re
 import urllib.request
 
-import UnityPy
+REPO_RAW = "https://raw.githubusercontent.com/ngmthang-g/clinent-game-than-long-DATA-2222/main"
+INTERFACE_URL = REPO_RAW + "/Game/Th%E1%BA%A7n%20Long%20%20Mobile_Data/StreamingAssets/Interface.unity3d"
+MATERIALIZER_URL = REPO_RAW + "/tools/materialize_tool_data.py"
 
-URL = "https://raw.githubusercontent.com/ngmthang-g/clinent-game-than-long-DATA-2222/main/Game/Th%E1%BA%A7n%20Long%20%20Mobile_Data/StreamingAssets/Interface.unity3d"
-OUT = Path("research-interface.unity3d")
+root = Path("research_ui")
+root.mkdir(exist_ok=True)
+enc = root / "Interface.unity3d"
+helper = root / "materialize_tool_data.py"
 
-print(f"download {URL}")
-urllib.request.urlretrieve(URL, OUT)
-print(f"downloaded {OUT.stat().st_size} bytes")
+urllib.request.urlretrieve(INTERFACE_URL, enc)
+urllib.request.urlretrieve(MATERIALIZER_URL, helper)
+print(f"encrypted={enc.stat().st_size}")
 
-env = UnityPy.load(str(OUT))
-assets = []
-for obj in env.objects:
-    if obj.type.name != "TextAsset":
-        continue
-    data = obj.read()
-    name = getattr(data, "m_Name", "") or getattr(data, "name", "") or ""
-    raw = getattr(data, "m_Script", b"")
-    if isinstance(raw, bytes):
-        text = raw.decode("utf-8", errors="replace")
-    else:
-        text = str(raw or "")
-    assets.append((name, text))
+spec = importlib.util.spec_from_file_location("tlmat", helper)
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
 
-print(f"TextAssets={len(assets)}")
-name_terms = ("topicon", "skillbar", "roleinfo", "mainui", "maininterface", "functionbar", "quickbar")
-body_terms = re.compile(r"(?i)(bag|skill|switch|roleinfo|topicon|button|toggle|quick|expand|collapse|menu|more)")
+dec = mod.fg_decrypt(enc.read_bytes())
+print(f"decrypted_signature={dec[:16]!r} size={len(dec)}")
 
-for name, text in sorted(assets, key=lambda it: it[0].lower()):
+bundle_dir = root / "bundle"
+files = mod.extract_unityfs_bytes(dec, bundle_dir)
+print(f"unityfs_entries={len(files)}")
+
+xml_dir = root / "xml"
+found = {}
+for p in files:
+    try:
+        got = mod.extract_config_xml_from_cab(p, xml_dir)
+        found.update(got)
+    except Exception as exc:
+        print(f"xml scan skipped {p.name}: {exc}")
+print(f"xml_assets={len(found)}")
+
+name_terms = ("topicon", "skillbar", "roleinfo", "mainui", "maininterface", "functionbar", "quickbar", "shortcut", "operation")
+body_terms = re.compile(r"(?i)(bag|skill|switch|roleinfo|topicon|button|toggle|quick|expand|collapse|menu|more|shortcut|operation|function)")
+
+for name, path in sorted(found.items(), key=lambda it: it[0].lower()):
     lname = name.lower()
     if not any(term in lname for term in name_terms):
         continue
+    text = path.read_text(encoding="utf-8", errors="replace")
     print("\n" + "=" * 100)
     print(f"ASSET {name} chars={len(text)}")
     print("=" * 100)
-    lines = text.splitlines()
-    if 1 < len(lines) <= 1200:
-        matched = [line for line in lines if body_terms.search(line)]
+    # Layout XML is usually compact; emit each element/tag fragment that contains target words.
+    chunks = re.split(r"(?=<)|(?<=>)", text)
+    matched = []
+    for chunk in chunks:
+        if body_terms.search(chunk):
+            clean = " ".join(chunk.split())
+            if clean and clean not in matched:
+                matched.append(clean)
+    if matched:
         for line in matched[:500]:
-            print(line[:4000])
-        continue
-    # Minified XML or one-line text: print context windows around relevant terms.
-    seen = set()
-    for match in body_terms.finditer(text):
-        start = max(0, match.start() - 350)
-        end = min(len(text), match.end() + 500)
-        chunk = text[start:end].replace("\r", " ").replace("\n", " ")
-        key = chunk[:160]
-        if key in seen:
-            continue
-        seen.add(key)
-        print("... " + chunk + " ...")
-        if len(seen) >= 160:
-            break
+            print(line[:5000])
+    else:
+        # Fallback context windows for minified/odd XML.
+        seen = set()
+        for match in body_terms.finditer(text):
+            start = max(0, match.start() - 500)
+            end = min(len(text), match.end() + 800)
+            chunk = " ".join(text[start:end].split())
+            if chunk in seen:
+                continue
+            seen.add(chunk)
+            print("... " + chunk[:6000] + " ...")
+            if len(seen) >= 100:
+                break

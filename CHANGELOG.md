@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.4-probe] - 2026-09-12
+
+- Add three approved named UI targets: `MỞ TAY NẢI`, `CHUYỂN → SKILL`, `CHUYỂN → TAY NẢI`.
+- Each target exposes read-only `NHẬN DIỆN` plus explicit `TEST DIRECT TARGET`.
+- Recognition scores live `Name/Text/Tag/Handler/Ancestors/Descendants` fingerprints; no image matching and no fixed screen coordinates.
+- `TEST DIRECT TARGET` re-enumerates/re-resolves the live object on every request and dispatches through the existing direct callback path.
+- Equal-strength competing candidates fail closed as `TARGET AMBIGUOUS`; missing fingerprints fail closed as `TARGET NOT FOUND`.
+- Keep F8 selection-only and preserve fresh before/after snapshot evidence.
+- Protocol bump `0x00010400`.
+- Build status: PENDING Windows/MSVC verification.
+- Runtime status for the three new recognizers: `RUNTIME UNTESTED`.
+
 ## [0.1.3-probe] - 2026-09-12
 
 - Fix v0.1.2 live `Action ném managed exception` by retiring manual `new PointerEventData/new List<RaycastResult>` from active F8 path.

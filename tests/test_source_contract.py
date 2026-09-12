@@ -32,6 +32,35 @@ def test_protocol_probe_only():
         assert forbidden not in s, forbidden
 
 
+def test_named_target_recognition_and_direct_dispatch_contract():
+    protocol = text("src/probe_protocol.h")
+    for token in [
+        "RecognizeTarget", "DirectInvokeTarget", "UiTarget",
+        "OpenBag", "SwitchToSkills", "SwitchToBagUi",
+    ]:
+        assert token in protocol, token
+
+    bridge = translation_unit("src/probe_bridge.cpp", "probe_bridge_impl_*.inl")
+    for token in [
+        "FindNamedTarget", "RecognizeTarget", "DirectInvokeTarget",
+        "UiTarget::OpenBag", "UiTarget::SwitchToSkills", "UiTarget::SwitchToBagUi",
+        "TARGET AMBIGUOUS", "TARGET NOT FOUND",
+    ]:
+        assert token in bridge, token
+    # Target actions must use the same live direct callback path; never a semantic bag shortcut.
+    assert "InvokeControl(selected" in bridge
+    assert "SemanticOpenBag" not in bridge
+    assert "TrySemanticCallUi" not in bridge
+
+    controller = translation_unit("src/probe_controller.cpp", "probe_controller_impl_*.inl")
+    for token in [
+        "MỞ TAY NẢI", "CHUYỂN → SKILL", "CHUYỂN → TAY NẢI",
+        "NHẬN DIỆN", "TEST DIRECT TARGET",
+        "Command::RecognizeTarget", "Command::DirectInvokeTarget",
+    ]:
+        assert token in controller, token
+
+
 def test_bridge_contains_only_probe_runtime_paths():
     s = translation_unit("src/probe_bridge.cpp", "probe_bridge_impl_*.inl")
     for token in [
@@ -77,6 +106,7 @@ def test_controller_is_probe_only_and_f8_is_selection():
     assert "Command::PickAtPoint" in f8_block
     assert "Command::DirectInvokeAtPoint" not in f8_block
     assert "Command::InputSyncClickAtPoint" not in f8_block
+    assert "Command::DirectInvokeTarget" not in f8_block
     assert "F8 POINT CAPTURED" in s
     assert "TEST BAG SEMANTIC" not in s
     assert "TEST INPUTSYNC" not in s

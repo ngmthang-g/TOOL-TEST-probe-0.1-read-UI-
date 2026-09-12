@@ -75,6 +75,193 @@ bool DirectInvokeAtPoint(int x, int y, ProbeResponse& response, wchar_t* detail,
     return true;
 }
 
+
+std::wstring LowerAscii(std::wstring value) {
+    for (wchar_t& ch : value) {
+        if (ch >= L'A' && ch <= L'Z') ch = static_cast<wchar_t>(ch - L'A' + L'a');
+    }
+    return value;
+}
+
+bool ContainsAny(const std::wstring& value, std::initializer_list<const wchar_t*> terms) {
+    for (const wchar_t* term : terms) {
+        if (term && *term && value.find(term) != std::wstring::npos) return true;
+    }
+    return false;
+}
+
+std::wstring TargetFingerprint(const UiControl& control) {
+    return LowerAscii(control.className + L"|" + control.labels.name + L"|" + control.labels.text + L"|" +
+                      control.labels.tag + L"|" + control.labels.handler + L"|" + control.labels.ancestors + L"|" +
+                      control.labels.descendants);
+}
+
+const wchar_t* TargetLabel(UiTarget target) {
+    switch (target) {
+        case UiTarget::OpenBag: return L"MỞ TAY NẢI";
+        case UiTarget::SwitchToSkills: return L"CHUYỂN → SKILL";
+        case UiTarget::SwitchToBagUi: return L"CHUYỂN → TAY NẢI";
+        default: return L"UNKNOWN TARGET";
+    }
+}
+
+int TargetThreshold(UiTarget target) {
+    switch (target) {
+        case UiTarget::OpenBag: return 70;
+        case UiTarget::SwitchToSkills: return 80;
+        case UiTarget::SwitchToBagUi: return 80;
+        default: return 100000;
+    }
+}
+
+int ScoreNamedTarget(UiTarget target, const UiControl& control) {
+    if (!control.directCallable) return -100000;
+    const std::wstring all = TargetFingerprint(control);
+    const std::wstring name = LowerAscii(control.labels.name);
+    const std::wstring text = LowerAscii(control.labels.text);
+    const std::wstring handler = LowerAscii(control.labels.handler);
+    const std::wstring ancestors = LowerAscii(control.labels.ancestors);
+    const std::wstring descendants = LowerAscii(control.labels.descendants);
+    const bool hudContext = ContainsAny(ancestors, {L"skillbar", L"topicon", L"mainui", L"maininterface", L"hud", L"operation", L"action"});
+    const bool switchVerb = ContainsAny(all, {L"switch", L"change", L"toggle", L"expand", L"collapse", L"more", L"show", L"convert"});
+    const bool bagCaption = control.labels.text.find(L"Túi đồ") != std::wstring::npos ||
+                            control.labels.descendants.find(L"Túi đồ") != std::wstring::npos ||
+                            text.find(L"túi đồ") != std::wstring::npos || descendants.find(L"túi đồ") != std::wstring::npos;
+
+    int score = 0;
+    switch (target) {
+        case UiTarget::OpenBag:
+            if (bagCaption) score += 140;
+            if (ContainsAny(name, {L"openbag", L"buttonbag", L"bagbutton", L"btnbag"})) score += 85;
+            if (ContainsAny(handler, {L"openbag", L"bagclick", L"bagclicked"})) score += 85;
+            if (all.find(L"inventory") != std::wstring::npos) score += 50;
+            if (all.find(L"bag") != std::wstring::npos) score += 45;
+            if (hudContext) score += 18;
+            if (ContainsAny(all, {L"sortbag", L"mergeitems", L"quickitem", L"gem bag", L"fashionbag", L"soulstone"})) score -= 90;
+            break;
+
+        case UiTarget::SwitchToSkills:
+            if (ContainsAny(name, {L"switchtoskill", L"showskill", L"skillsswitch", L"skillbarswitch"})) score += 90;
+            if (ContainsAny(handler, {L"switchtoskill", L"showskill", L"skillbar", L"skillmode"})) score += 75;
+            if (all.find(L"skill") != std::wstring::npos) score += 45;
+            if (ContainsAny(descendants, {L"skill", L"fight", L"sword", L"combat"})) score += 28;
+            if (switchVerb) score += 35;
+            if (hudContext) score += 25;
+            if (bagCaption) score -= 140;
+            if (ContainsAny(handler, {L"buttonskillhovered", L"useskill"})) score -= 80;
+            break;
+
+        case UiTarget::SwitchToBagUi:
+            if (ContainsAny(name, {L"switchtobag", L"showbag", L"bagswitch", L"menuswitch", L"functionswitch"})) score += 90;
+            if (ContainsAny(handler, {L"switchtobag", L"showbag", L"menu", L"function", L"shortcut"})) score += 70;
+            if (all.find(L"bag") != std::wstring::npos) score += 42;
+            if (ContainsAny(all, {L"menu", L"function", L"shortcut", L"grid", L"item"})) score += 30;
+            if (switchVerb) score += 35;
+            if (hudContext) score += 25;
+            if (bagCaption) score -= 160; // Do not confuse the actual Túi đồ button with the mode switch.
+            if (ContainsAny(handler, {L"sortbag", L"mergeitems", L"openbag"})) score -= 80;
+            break;
+
+        default:
+            return -100000;
+    }
+    return score;
+}
+
+bool BetterNamedCandidate(const UiControl& candidate, const UiControl& current) {
+    if (candidate.hasGeometry != current.hasGeometry) return candidate.hasGeometry;
+    if (candidate.hasGeometry && current.hasGeometry) {
+        if (std::fabs(candidate.area - current.area) > 0.5f) return candidate.area < current.area;
+    }
+    return candidate.depth > current.depth;
+}
+
+bool NamedCandidateTie(const UiControl& a, const UiControl& b) {
+    if (a.hasGeometry != b.hasGeometry) return false;
+    if (a.hasGeometry && b.hasGeometry && std::fabs(a.area - b.area) > 0.5f) return false;
+    return a.depth == b.depth && a.identity != b.identity;
+}
+
+bool FindNamedTarget(UiTarget target, UiControl& selected, bool& ambiguous,
+                     int& selectedScore, wchar_t* detail, std::size_t cap) {
+    selected = {};
+    ambiguous = false;
+    selectedScore = -100000;
+    if (target == UiTarget::None) {
+        SetText(detail, cap, L"TARGET NOT FOUND • target id không hợp lệ");
+        return false;
+    }
+
+    std::vector<UiControl> controls;
+    if (!EnumerateActiveUiObjects(controls, detail, cap)) return false;
+    const int threshold = TargetThreshold(target);
+    bool found = false;
+    for (UiControl& control : controls) {
+        const int score = ScoreNamedTarget(target, control);
+        if (score < threshold) continue;
+        if (!found || score > selectedScore || (score == selectedScore && BetterNamedCandidate(control, selected))) {
+            selected = control;
+            selectedScore = score;
+            found = true;
+            ambiguous = false;
+        } else if (score == selectedScore && NamedCandidateTie(control, selected)) {
+            ambiguous = true;
+        }
+    }
+
+    if (!found) {
+        SetText(detail, cap, L"TARGET NOT FOUND • ");
+        Append(detail, cap, TargetLabel(target));
+        Append(detail, cap, L" • không có fingerprint đủ điểm; không dispatch");
+        return false;
+    }
+    if (ambiguous) {
+        SetText(detail, cap, L"TARGET AMBIGUOUS • ");
+        Append(detail, cap, TargetLabel(target));
+        Append(detail, cap, L" • nhiều live control ngang hạng; không dispatch");
+        return false;
+    }
+    return true;
+}
+
+bool RecognizeTarget(UiTarget target, ProbeResponse& response, wchar_t* detail, std::size_t cap) {
+    UiControl selected{};
+    bool ambiguous = false;
+    int score = 0;
+    if (!FindNamedTarget(target, selected, ambiguous, score, detail, cap)) {
+        if (ambiguous) response.resultCode = static_cast<std::int32_t>(ResultCode::Ambiguous);
+        return false;
+    }
+    FillRow(selected, response.picked);
+    response.value0 = score;
+    response.resultCode = static_cast<std::int32_t>(ResultCode::TargetRecognized);
+    SetText(detail, cap, L"TARGET RECOGNIZED • ");
+    Append(detail, cap, TargetLabel(target));
+    Append(detail, cap, L" • score="); AppendInt(detail, cap, score);
+    Append(detail, cap, L" • Name="); Append(detail, cap, response.picked.name);
+    Append(detail, cap, L" • Handler="); Append(detail, cap, response.picked.handler);
+    return true;
+}
+
+bool DirectInvokeTarget(UiTarget target, ProbeResponse& response, wchar_t* detail, std::size_t cap) {
+    // Re-enumerate and re-resolve on every request. Never reuse a pointer from RecognizeTarget.
+    UiControl selected{};
+    bool ambiguous = false;
+    int score = 0;
+    if (!FindNamedTarget(target, selected, ambiguous, score, detail, cap)) {
+        if (ambiguous) response.resultCode = static_cast<std::int32_t>(ResultCode::Ambiguous);
+        return false;
+    }
+    FillRow(selected, response.picked);
+    response.value0 = score;
+    if (!InvokeControl(selected, detail, cap)) return false;
+    response.resultCode = static_cast<std::int32_t>(ResultCode::TargetDispatched);
+    SetText(detail, cap, L"TEST DIRECT TARGET PASS • fresh live resolve -> callback • ");
+    Append(detail, cap, TargetLabel(target));
+    Append(detail, cap, L" • score="); AppendInt(detail, cap, score);
+    return true;
+}
+
 bool EnsureInputSync(wchar_t* detail, std::size_t cap) {
     if (g_ui.inputReady) return true;
     if (!EnsureUiGeometry(detail, cap)) return false;
@@ -175,6 +362,10 @@ void ProcessRequest() {
                 ok = DirectInvokeAtPoint(g_shared->request.arg0, g_shared->request.arg1, response, detail, _countof(detail)); break;
             case Command::InputSyncClickAtPoint:
                 ok = InputSyncClickAtPoint(g_shared->request.arg0, g_shared->request.arg1, response, detail, _countof(detail)); break;
+            case Command::RecognizeTarget:
+                ok = RecognizeTarget(static_cast<UiTarget>(g_shared->request.arg0), response, detail, _countof(detail)); break;
+            case Command::DirectInvokeTarget:
+                ok = DirectInvokeTarget(static_cast<UiTarget>(g_shared->request.arg0), response, detail, _countof(detail)); break;
             default:
                 SetText(detail, _countof(detail), L"Probe command không hợp lệ"); break;
         }

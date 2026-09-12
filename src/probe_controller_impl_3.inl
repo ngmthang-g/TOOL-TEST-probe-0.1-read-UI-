@@ -23,7 +23,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int show) {
 
     HWND hwnd = CreateWindowExW(0, kWindowClass, kWindowTitle,
                                 WS_OVERLAPPEDWINDOW | WS_VISIBLE,
-                                CW_USEDEFAULT, CW_USEDEFAULT, 1460, 810,
+                                CW_USEDEFAULT, CW_USEDEFAULT, 1460, 930,
                                 nullptr, nullptr, instance, nullptr);
     if (!hwnd) return 2;
     ShowWindow(hwnd, show);

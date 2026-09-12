@@ -19,8 +19,8 @@ using namespace tlprobe;
 
 namespace {
 
-constexpr wchar_t kWindowClass[] = L"ThanLongUiInternalProbeV013";
-constexpr wchar_t kWindowTitle[] = L"ThanLong UI Internal Probe v0.1.3 — DIRECT RETEST";
+constexpr wchar_t kWindowClass[] = L"ThanLongUiInternalProbeV014";
+constexpr wchar_t kWindowTitle[] = L"ThanLong UI Internal Probe v0.1.4 — NAMED UI TARGETS";
 constexpr wchar_t kGameModule[] = L"GameAssembly.dll";
 constexpr int kHotkeyPick = 1;
 constexpr UINT_PTR kEvidenceTimer = 0x501;
@@ -34,6 +34,12 @@ enum ControlId : int {
     IDC_LIST,
     IDC_DETAIL,
     IDC_TEST_DIRECT,
+    IDC_RECOGNIZE_BAG,
+    IDC_DIRECT_BAG,
+    IDC_RECOGNIZE_SKILLS,
+    IDC_DIRECT_SKILLS,
+    IDC_RECOGNIZE_BAGUI,
+    IDC_DIRECT_BAGUI,
     IDC_LOG,
     IDC_STATUS,
 };

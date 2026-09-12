@@ -205,6 +205,38 @@ void RunPointAction(Command command, const wchar_t* label) {
     ScheduleEvidence(label, response.picked.identity, before);
 }
 
+
+void RecognizeNamedTarget(UiTarget target, const wchar_t* label) {
+    ProbeResponse response{};
+    std::wstring error;
+    if (!g_app.bridge.Call(Command::RecognizeTarget, static_cast<int>(target), 0, 0, response, error)) {
+        Log(std::wstring(L"NHẬN DIỆN ") + label + L" FAIL • " + error);
+        return;
+    }
+    g_app.lastPicked = response.picked;
+    ShowRowDetail(response.picked, (std::wstring(L"NHẬN DIỆN • ") + label).c_str());
+    Log(std::wstring(response.detail) + L" • read-only, chưa dispatch action");
+}
+
+void RunNamedTargetAction(UiTarget target, const wchar_t* label) {
+    UiSnapshot before{};
+    std::wstring error;
+    if (!ScanSnapshot(before, false, error)) {
+        Log(std::wstring(L"TEST DIRECT TARGET ") + label + L" PRE-SCAN FAIL • " + error);
+        return;
+    }
+    ProbeResponse response{};
+    if (!g_app.bridge.Call(Command::DirectInvokeTarget, static_cast<int>(target), 0, 0, response, error)) {
+        Log(std::wstring(L"TEST DIRECT TARGET ") + label + L" FAIL • " + error);
+        return;
+    }
+    g_app.lastPicked = response.picked;
+    const std::wstring action = std::wstring(L"TEST DIRECT TARGET • ") + label;
+    ShowRowDetail(response.picked, action.c_str());
+    Log(std::wstring(response.detail) + L" • waiting for fresh state proof (timer is observation delay, not success proof)");
+    ScheduleEvidence(action, response.picked.identity, before);
+}
+
 void CompleteEvidence() {
     KillTimer(g_app.window, kEvidenceTimer);
     if (!g_app.evidence.active) return;
@@ -259,18 +291,31 @@ void CreateUi(HWND hwnd) {
                              12, 45, 1405, 425, IDC_LIST);
     InitListColumns();
 
-    MakeControl(L"STATIC", L"Selected UI / evidence:", 0, 12, 480, 180, 20, 0);
+    MakeControl(L"STATIC", L"Selected UI / evidence:", 0, 12, 462, 180, 20, 0);
     g_app.detail = MakeControl(L"EDIT", L"Nhấn F8 khi con trỏ nằm trên UI cần probe. F8 KHÔNG CLICK.",
                                ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY | WS_VSCROLL | WS_BORDER,
-                               12, 502, 835, 142, IDC_DETAIL);
-    MakeControl(L"BUTTON", L"TEST DIRECT", BS_PUSHBUTTON, 860, 506, 220, 36, IDC_TEST_DIRECT);
+                               12, 482, 835, 176, IDC_DETAIL);
+    MakeControl(L"BUTTON", L"TEST DIRECT", BS_PUSHBUTTON, 860, 482, 220, 36, IDC_TEST_DIRECT);
+    MakeControl(L"STATIC", L"F8 generic", SS_LEFT, 1092, 490, 115, 22, 0);
 
-    MakeControl(L"STATIC", L"Log:", 0, 860, 555, 50, 20, 0);
+    MakeControl(L"STATIC", L"MỞ TAY NẢI", SS_LEFT, 860, 535, 150, 22, 0);
+    MakeControl(L"BUTTON", L"NHẬN DIỆN", BS_PUSHBUTTON, 1015, 527, 125, 32, IDC_RECOGNIZE_BAG);
+    MakeControl(L"BUTTON", L"TEST DIRECT TARGET", BS_PUSHBUTTON, 1148, 527, 269, 32, IDC_DIRECT_BAG);
+
+    MakeControl(L"STATIC", L"CHUYỂN → SKILL", SS_LEFT, 860, 575, 150, 22, 0);
+    MakeControl(L"BUTTON", L"NHẬN DIỆN", BS_PUSHBUTTON, 1015, 567, 125, 32, IDC_RECOGNIZE_SKILLS);
+    MakeControl(L"BUTTON", L"TEST DIRECT TARGET", BS_PUSHBUTTON, 1148, 567, 269, 32, IDC_DIRECT_SKILLS);
+
+    MakeControl(L"STATIC", L"CHUYỂN → TAY NẢI", SS_LEFT, 860, 615, 150, 22, 0);
+    MakeControl(L"BUTTON", L"NHẬN DIỆN", BS_PUSHBUTTON, 1015, 607, 125, 32, IDC_RECOGNIZE_BAGUI);
+    MakeControl(L"BUTTON", L"TEST DIRECT TARGET", BS_PUSHBUTTON, 1148, 607, 269, 32, IDC_DIRECT_BAGUI);
+
+    MakeControl(L"STATIC", L"Log:", 0, 860, 653, 50, 20, 0);
     g_app.log = MakeControl(L"EDIT", L"", ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY | WS_VSCROLL | WS_BORDER,
-                            860, 578, 557, 170, IDC_LOG);
+                            860, 675, 557, 185, IDC_LOG);
     MakeControl(L"STATIC",
-                L"Probe v0.1.3: F8 dùng EventSystem.RaycastAll -> map UIObject -> TEST DIRECT. Không gọi Bag Semantic/InputSync test.",
-                SS_LEFT, 12, 656, 820, 44, 0);
+                L"Probe v0.1.4: F8 = EventSystem selector. Ba target mới dùng live fingerprint Name/Text/Handler/Ancestors/Descendants; nhận diện fail-closed, direct luôn re-resolve. Không Bag Semantic.",
+                SS_LEFT, 12, 675, 820, 70, 0);
 }
 
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -288,6 +333,12 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 case IDC_ATTACH: AttachSelected(); break;
                 case IDC_SCAN: ManualScan(); break;
                 case IDC_TEST_DIRECT: RunPointAction(Command::DirectInvokeAtPoint, L"TEST DIRECT"); break;
+                case IDC_RECOGNIZE_BAG: RecognizeNamedTarget(UiTarget::OpenBag, L"MỞ TAY NẢI"); break;
+                case IDC_DIRECT_BAG: RunNamedTargetAction(UiTarget::OpenBag, L"MỞ TAY NẢI"); break;
+                case IDC_RECOGNIZE_SKILLS: RecognizeNamedTarget(UiTarget::SwitchToSkills, L"CHUYỂN → SKILL"); break;
+                case IDC_DIRECT_SKILLS: RunNamedTargetAction(UiTarget::SwitchToSkills, L"CHUYỂN → SKILL"); break;
+                case IDC_RECOGNIZE_BAGUI: RecognizeNamedTarget(UiTarget::SwitchToBagUi, L"CHUYỂN → TAY NẢI"); break;
+                case IDC_DIRECT_BAGUI: RunNamedTargetAction(UiTarget::SwitchToBagUi, L"CHUYỂN → TAY NẢI"); break;
                 default: break;
             }
             return 0;

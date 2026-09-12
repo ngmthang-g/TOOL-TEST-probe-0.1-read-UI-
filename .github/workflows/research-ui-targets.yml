@@ -1,23 +1,38 @@
-name: research-ui-targets
+name: apply-v014-patch
 
 on:
   push:
     branches:
       - feature/ui-switch-targets-v0.1.4
     paths:
-      - 'tools/research_ui_targets.py'
+      - 'tools/apply_v014_patch.py'
       - '.github/workflows/research-ui-targets.yml'
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
-  inspect:
+  patch:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: feature/ui-switch-targets-v0.1.4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install UnityPy
-        run: python -m pip install UnityPy
-      - name: Extract candidate layouts and handlers
-        run: python tools/research_ui_targets.py
+      - name: Apply source patch
+        run: python tools/apply_v014_patch.py
+      - name: Commit source changes
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/probe_bridge_impl_4.inl src/probe_controller_impl_1.inl src/probe_controller_impl_2.inl src/probe_controller_impl_3.inl
+          if git diff --cached --quiet; then
+            echo "No source changes to commit"
+            exit 0
+          fi
+          git commit -m "feat: add three named UI direct targets"
+          git push origin HEAD:feature/ui-switch-targets-v0.1.4

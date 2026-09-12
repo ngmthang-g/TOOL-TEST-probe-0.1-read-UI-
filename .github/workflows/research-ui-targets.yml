@@ -1,0 +1,23 @@
+name: research-ui-targets
+
+on:
+  push:
+    branches:
+      - feature/ui-switch-targets-v0.1.4
+    paths:
+      - 'tools/research_ui_targets.py'
+      - '.github/workflows/research-ui-targets.yml'
+  workflow_dispatch:
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install UnityPy
+        run: python -m pip install UnityPy
+      - name: Extract candidate layouts and handlers
+        run: python tools/research_ui_targets.py

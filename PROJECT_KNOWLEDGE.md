@@ -5,8 +5,8 @@
 - Version: `0.1.4-probe`.
 - Repo: `ngmthang-g/TOOL-TEST-probe-0.1-read-UI-`.
 - Scope: runtime UI discovery + EventSystem target mapping + direct callback invocation only.
-- Build candidate: Windows/MSVC x64; authoritative CI status is in `VERSION.txt` after the final build.
-- Runtime inherited: scan PASS on client thật; F8 remains selection-only.
+- Build: **PASS** on Windows/MSVC x64. Verified run: `34669951178`.
+- Runtime inherited: **SCAN PASS** on client thật; F8 remains selection-only.
 - Runtime for the three named targets remains `NAMED_TARGETS_UNTESTED` until live evidence exists.
 
 ## v0.1.4 exact named-target contract
@@ -33,14 +33,16 @@
 
 Visible workflow uses `ScanUi`, `PickAtPoint`, `DirectInvokeAtPoint`, `RecognizeTarget`, `DirectInvokeTarget`. `InputSyncClickAtPoint` remains source-reference compatibility only and has no controller button. No semantic bag command exists.
 
-## Build verification required before release
+## Verification evidence
 
-- Source contract tests.
-- CMake x64 configure.
-- MSVC Release build of `ProbeController.exe` and `ProbeBridge.dll`.
-- Native CTest.
-- Artifact upload.
-- `dist/` publication containing runtime ZIP and source ZIP.
+Run `34669951178` completed successfully with:
+- Source contract: PASS.
+- CMake x64 configure: PASS.
+- MSVC Release build: PASS.
+- Native CTest: PASS.
+- Runtime/source package staging: PASS.
+- Artifact upload: PASS.
+- `dist/` publication: PASS.
 
 ## Runtime acceptance
 

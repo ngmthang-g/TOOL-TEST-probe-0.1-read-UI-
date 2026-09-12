@@ -45,6 +45,7 @@ jobs:
           Copy-Item build/bin/ProbeBridge.dll artifact/ProbeBridge.dll
           Copy-Item README.md artifact/README.md
           Copy-Item VERSION.txt artifact/VERSION.txt
+          Remove-Item tests/__pycache__ -Recurse -Force -ErrorAction SilentlyContinue
           Compress-Archive -Path CMakeLists.txt,README.md,VERSION.txt,CHANGELOG.md,PROJECT_KNOWLEDGE.md,src,tests,docs,.github -DestinationPath artifact/ThanLong-UI-Internal-Probe-v0.1.4-source.zip -Force
           Compress-Archive -Path artifact/ProbeController.exe,artifact/ProbeBridge.dll,artifact/README.md,artifact/VERSION.txt -DestinationPath artifact/ThanLong-UI-Internal-Probe-v0.1.4-win-x64.zip -Force
 

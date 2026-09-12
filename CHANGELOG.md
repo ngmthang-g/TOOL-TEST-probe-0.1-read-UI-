@@ -4,13 +4,16 @@
 
 - Add three approved named UI targets: `MỞ TAY NẢI`, `CHUYỂN → SKILL`, `CHUYỂN → TAY NẢI`.
 - Each target exposes read-only `NHẬN DIỆN` plus explicit `TEST DIRECT TARGET`.
-- Recognition scores live `Name/Text/Tag/Handler/Ancestors/Descendants` fingerprints; no image matching and no fixed screen coordinates.
-- `TEST DIRECT TARGET` re-enumerates/re-resolves the live object on every request and dispatches through the existing direct callback path.
-- Equal-strength competing candidates fail closed as `TARGET AMBIGUOUS`; missing fingerprints fail closed as `TARGET NOT FOUND`.
+- Replace heuristic target scoring with exact DATA-222 identities recovered from decrypted `Interface.unity3d`.
+- `MỞ TAY NẢI` resolves `ButBag` + `ButBagClick`.
+- Both directional switch actions resolve `ButtonOriginalSwitchSite` + `ButtonOriginalSwitchSiteClicked`.
+- Add directional guard using live `ToggleFirstTab` / `ToggleSecondTab` + `UIToggle.get_Selected`; already-correct state returns `TARGET ALREADY IN STATE` and does not click.
+- Missing or duplicate exact target fails closed as `TARGET NOT FOUND` / `TARGET AMBIGUOUS`.
+- `TEST DIRECT TARGET` re-enumerates/re-resolves the live object and state on every request and dispatches through the existing direct callback path.
 - Keep F8 selection-only and preserve fresh before/after snapshot evidence.
 - Protocol bump `0x00010400`.
-- Build status: PENDING Windows/MSVC verification.
-- Runtime status for the three new recognizers: `RUNTIME UNTESTED`.
+- Windows/MSVC x64 build PASS — run `34669951178`: source-contract, configure, Release build, native CTest, package staging, artifact upload and `dist/` publication all succeeded.
+- Runtime status for the three new targets: `RUNTIME UNTESTED`.
 
 ## [0.1.3-probe] - 2026-09-12
 

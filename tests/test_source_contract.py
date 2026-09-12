@@ -36,7 +36,7 @@ def test_named_target_recognition_and_direct_dispatch_contract():
     protocol = text("src/probe_protocol.h")
     for token in [
         "RecognizeTarget", "DirectInvokeTarget", "UiTarget",
-        "OpenBag", "SwitchToSkills", "SwitchToBagUi",
+        "OpenBag", "SwitchToSkills", "SwitchToBagUi", "TargetAlreadyInState",
     ]:
         assert token in protocol, token
 
@@ -44,7 +44,13 @@ def test_named_target_recognition_and_direct_dispatch_contract():
     for token in [
         "FindNamedTarget", "RecognizeTarget", "DirectInvokeTarget",
         "UiTarget::OpenBag", "UiTarget::SwitchToSkills", "UiTarget::SwitchToBagUi",
-        "TARGET AMBIGUOUS", "TARGET NOT FOUND",
+        "TARGET AMBIGUOUS", "TARGET NOT FOUND", "TARGET ALREADY IN STATE",
+        # Exact identities recovered from decrypted DATA-222 Interface.unity3d.
+        'L"ButBag"', 'L"ButBagClick"',
+        'L"ButtonOriginalSwitchSite"', 'L"ButtonOriginalSwitchSiteClicked"',
+        # Direction guard for the same physical switch button.
+        'L"ToggleFirstTab"', 'L"ToggleSecondTab"', '"get_Selected"',
+        "ReadSkillBarSwitchState",
     ]:
         assert token in bridge, token
     # Target actions must use the same live direct callback path; never a semantic bag shortcut.
@@ -57,6 +63,7 @@ def test_named_target_recognition_and_direct_dispatch_contract():
         "MỞ TAY NẢI", "CHUYỂN → SKILL", "CHUYỂN → TAY NẢI",
         "NHẬN DIỆN", "TEST DIRECT TARGET",
         "Command::RecognizeTarget", "Command::DirectInvokeTarget",
+        "ResultCode::TargetAlreadyInState",
     ]:
         assert token in controller, token
 

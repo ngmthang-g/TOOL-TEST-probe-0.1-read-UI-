@@ -1,0 +1,363 @@
+name: patch-v013
+
+on:
+  push:
+    paths:
+      - '.patch-v013/READY'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch-build-publish:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Patch v0.1.3
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+          import re
+
+          root = Path('.')
+          p = root / 'src/probe_bridge_impl_3.inl'
+          s = p.read_text(encoding='utf-8')
+          if 'LivePointerRaycastRuntime' not in s:
+              pattern = r'bool RaycastRawGameObjects\(.*?\n\}\n\nbool GameObjectForControl'
+              m = re.search(pattern, s, re.S)
+              if not m:
+                  raise SystemExit('RaycastRawGameObjects block not found')
+              replacement = r'''struct LivePointerRaycastRuntime {
+              bool ready = false;
+              Il2CppClass* eventSystem = nullptr;
+              Il2CppClass* pointerEventData = nullptr;
+              const MethodInfo* eventGetCurrent = nullptr;
+              const MethodInfo* eventGetCurrentInputModule = nullptr;
+              const MethodInfo* eventRaycastAll = nullptr;
+              const MethodInfo* pointerGetPosition = nullptr;
+              const MethodInfo* pointerSetPosition = nullptr;
+          };
+
+          LivePointerRaycastRuntime g_liveRaycast;
+
+          bool InvokeStageVoid(const MethodInfo* method, void* instance, void** args,
+                               const wchar_t* stage, wchar_t* detail, std::size_t cap) {
+              wchar_t inner[256]{};
+              if (InvokeVoid(method, instance, args, inner, _countof(inner))) return true;
+              SetText(detail, cap, stage);
+              Append(detail, cap, L" • ");
+              Append(detail, cap, inner);
+              return false;
+          }
+
+          bool EnsureLivePointerRaycast(wchar_t* detail, std::size_t cap) {
+              if (g_liveRaycast.ready) return true;
+              if (!EnsureUiGeometry(detail, cap)) return false;
+              g_liveRaycast.eventSystem = ResolveEventClass("EventSystem");
+              g_liveRaycast.pointerEventData = ResolveEventClass("PointerEventData");
+              if (!g_liveRaycast.eventSystem || !g_liveRaycast.pointerEventData) {
+                  SetText(detail, cap, L"EventSystem/PointerEventData chưa resolve");
+                  return false;
+              }
+              g_liveRaycast.eventGetCurrent = ExactMethod(g_liveRaycast.eventSystem, "get_current", 0, true);
+              g_liveRaycast.eventGetCurrentInputModule = ExactMethod(g_liveRaycast.eventSystem, "get_currentInputModule", 0, false);
+              g_liveRaycast.eventRaycastAll = ExactMethod(g_liveRaycast.eventSystem, "RaycastAll", 2, false,
+                                                           "UnityEngine.EventSystems.PointerEventData");
+              g_liveRaycast.pointerGetPosition = ExactMethod(g_liveRaycast.pointerEventData, "get_position", 0, false);
+              g_liveRaycast.pointerSetPosition = ExactMethod(g_liveRaycast.pointerEventData, "set_position", 1, false,
+                                                              "UnityEngine.Vector2");
+              if (!g_liveRaycast.eventGetCurrent || !g_liveRaycast.eventGetCurrentInputModule ||
+                  !g_liveRaycast.eventRaycastAll || !g_liveRaycast.pointerGetPosition || !g_liveRaycast.pointerSetPosition) {
+                  SetText(detail, cap, L"Live EventSystem/InputModule signature chưa resolve");
+                  return false;
+              }
+              g_liveRaycast.ready = true;
+              return true;
+          }
+
+          bool GetLivePointerEventData(Il2CppObject* inputModule, Il2CppObject*& pointerData,
+                                       wchar_t* detail, std::size_t cap) {
+              pointerData = nullptr;
+              if (!inputModule) return false;
+              Il2CppClass* moduleClass = g_api.object_get_class(inputModule);
+              const MethodInfo* getLast = moduleClass ? FindMethod(moduleClass, "GetLastPointerEventData", 1) : nullptr;
+              if (!getLast || StaticMethod(getLast) || !ParamType(getLast, 0, "System.Int32")) {
+                  SetText(detail, cap, L"PointerInputModule.GetLastPointerEventData(int) chưa resolve");
+                  return false;
+              }
+              for (std::int32_t id : {-1, 0}) {
+                  void* args[] = {&id};
+                  Il2CppObject* candidate = nullptr;
+                  wchar_t inner[192]{};
+                  if (InvokeObjectArgs(getLast, inputModule, args, candidate, inner, _countof(inner)) && candidate &&
+                      AssignableObject(g_liveRaycast.pointerEventData, candidate)) {
+                      pointerData = candidate;
+                      return true;
+                  }
+              }
+              SetText(detail, cap, L"PointerInputModule chưa có live PointerEventData; rê chuột trong game rồi F8");
+              return false;
+          }
+
+          bool GetLiveRaycastCache(Il2CppObject* inputModule, Il2CppObject*& cache,
+                                   wchar_t* detail, std::size_t cap) {
+              cache = nullptr;
+              Il2CppClass* moduleClass = inputModule ? g_api.object_get_class(inputModule) : nullptr;
+              FieldInfo* cacheField = moduleClass ? FindField(moduleClass, "m_RaycastResultCache") : nullptr;
+              if (!cacheField) {
+                  SetText(detail, cap, L"BaseInputModule.m_RaycastResultCache chưa resolve");
+                  return false;
+              }
+              g_api.field_get_value(inputModule, cacheField, &cache);
+              if (!cache) {
+                  SetText(detail, cap, L"m_RaycastResultCache hiện null");
+                  return false;
+              }
+              return true;
+          }
+
+          bool ExtractLiveRaycastGameObject(Il2CppObject* boxedResult, Il2CppClass* resultClass,
+                                            FieldInfo* gameField, const MethodInfo* getGameObject,
+                                            Il2CppObject*& gameObject) {
+              gameObject = nullptr;
+              if (!boxedResult || !resultClass) return false;
+              wchar_t ignored[128]{};
+              if (getGameObject &&
+                  InvokeObject(getGameObject, ManagedThis(boxedResult), gameObject, ignored, _countof(ignored)) &&
+                  gameObject && AssignableObject(g_ui.unityGameObject, gameObject)) return true;
+              gameObject = nullptr;
+              if (gameField) {
+                  g_api.field_get_value(boxedResult, gameField, &gameObject);
+                  if (gameObject && AssignableObject(g_ui.unityGameObject, gameObject)) return true;
+              }
+              gameObject = nullptr;
+              return false;
+          }
+
+          bool RaycastRawGameObjects(int normalizedX, int normalizedY,
+                                     std::vector<Il2CppObject*>& hits,
+                                     EventRaycastStats& stats,
+                                     wchar_t* detail, std::size_t cap) {
+              hits.clear();
+              stats = {};
+              if (!EnsureLivePointerRaycast(detail, cap)) return false;
+              if (!BuildUnityScreenPoint(normalizedX, normalizedY, stats.unityPoint, detail, cap)) return false;
+
+              Il2CppObject* current = nullptr;
+              wchar_t inner[256]{};
+              if (!InvokeObject(g_liveRaycast.eventGetCurrent, nullptr, current, inner, _countof(inner)) || !current) {
+                  SetText(detail, cap, L"EventSystem.current FAIL • "); Append(detail, cap, inner); return false;
+              }
+
+              Il2CppObject* inputModule = nullptr;
+              inner[0] = 0;
+              if (!InvokeObject(g_liveRaycast.eventGetCurrentInputModule, current, inputModule, inner, _countof(inner)) || !inputModule) {
+                  SetText(detail, cap, L"EventSystem.currentInputModule FAIL • "); Append(detail, cap, inner); return false;
+              }
+
+              Il2CppObject* pointerData = nullptr;
+              if (!GetLivePointerEventData(inputModule, pointerData, detail, cap)) return false;
+
+              Il2CppObject* cache = nullptr;
+              if (!GetLiveRaycastCache(inputModule, cache, detail, cap)) return false;
+              Il2CppClass* listClass = g_api.object_get_class(cache);
+              const MethodInfo* clear = listClass ? FindMethod(listClass, "Clear", 0) : nullptr;
+              const MethodInfo* getCount = listClass ? FindMethod(listClass, "get_Count", 0) : nullptr;
+              const MethodInfo* getItem = listClass ? FindMethod(listClass, "get_Item", 1) : nullptr;
+              if (!clear || !getCount || !getItem || !ParamType(getItem, 0, "System.Int32")) {
+                  SetText(detail, cap, L"Live RaycastResult cache methods chưa resolve");
+                  return false;
+              }
+
+              const Il2CppType* itemType = g_api.method_get_return_type(getItem);
+              Il2CppClass* resultClass = itemType ? g_api.class_from_type(itemType) : nullptr;
+              FieldInfo* gameField = resultClass ? FindField(resultClass, "gameObject") : nullptr;
+              const MethodInfo* getGameObject = resultClass ? FindMethod(resultClass, "get_gameObject", 0) : nullptr;
+              if (!resultClass || (!gameField && !getGameObject)) {
+                  SetText(detail, cap, L"RaycastResult.gameObject chưa resolve");
+                  return false;
+              }
+
+              Il2CppObject* oldPositionBox = nullptr;
+              inner[0] = 0;
+              if (!InvokeObject(g_liveRaycast.pointerGetPosition, pointerData, oldPositionBox, inner, _countof(inner)) || !oldPositionBox) {
+                  SetText(detail, cap, L"PointerEventData.get_position FAIL • "); Append(detail, cap, inner); return false;
+              }
+              void* oldRaw = g_api.object_unbox(oldPositionBox);
+              if (!oldRaw) { SetText(detail, cap, L"PointerEventData.position unbox FAIL"); return false; }
+              UnityVector2 oldPosition = *reinterpret_cast<const UnityVector2*>(oldRaw);
+
+              if (!InvokeStageVoid(clear, cache, nullptr, L"RaycastCache.Clear(before) FAIL", detail, cap)) return false;
+
+              UnityVector2 point = stats.unityPoint;
+              void* setArgs[] = {&point};
+              if (!InvokeStageVoid(g_liveRaycast.pointerSetPosition, pointerData, setArgs,
+                                   L"PointerEventData.set_position FAIL", detail, cap)) return false;
+
+              void* rayArgs[] = {&pointerData, &cache};
+              bool rayOk = InvokeStageVoid(g_liveRaycast.eventRaycastAll, current, rayArgs,
+                                           L"EventSystem.RaycastAll FAIL", detail, cap);
+
+              void* restoreArgs[] = {&oldPosition};
+              wchar_t restoreDetail[256]{};
+              bool restoreOk = InvokeVoid(g_liveRaycast.pointerSetPosition, pointerData, restoreArgs,
+                                          restoreDetail, _countof(restoreDetail));
+              if (!rayOk) {
+                  wchar_t ignored[128]{}; (void)InvokeVoid(clear, cache, nullptr, ignored, _countof(ignored));
+                  return false;
+              }
+              if (!restoreOk) {
+                  wchar_t ignored[128]{}; (void)InvokeVoid(clear, cache, nullptr, ignored, _countof(ignored));
+                  SetText(detail, cap, L"PointerEventData.restore_position FAIL • "); Append(detail, cap, restoreDetail);
+                  return false;
+              }
+
+              std::int64_t count64 = 0;
+              inner[0] = 0;
+              if (!InvokeScalar(getCount, cache, count64, inner, _countof(inner)) || count64 < 0 || count64 > 4096) {
+                  wchar_t ignored[128]{}; (void)InvokeVoid(clear, cache, nullptr, ignored, _countof(ignored));
+                  SetText(detail, cap, L"Raycast cache Count FAIL • "); Append(detail, cap, inner); return false;
+              }
+              const int count = static_cast<int>(count64);
+              stats.raycastHits = count;
+              const int limit = std::min(count, 64);
+              hits.reserve(static_cast<std::size_t>(limit));
+              for (int i = 0; i < limit; ++i) {
+                  std::int32_t index = i;
+                  void* itemArgs[] = {&index};
+                  Il2CppObject* boxed = nullptr;
+                  wchar_t itemDetail[128]{};
+                  if (!InvokeObjectArgs(getItem, cache, itemArgs, boxed, itemDetail, _countof(itemDetail)) || !boxed) continue;
+                  Il2CppObject* gameObject = nullptr;
+                  if (!ExtractLiveRaycastGameObject(boxed, resultClass, gameField, getGameObject, gameObject)) continue;
+                  hits.push_back(gameObject);
+              }
+
+              if (!InvokeStageVoid(clear, cache, nullptr, L"RaycastCache.Clear(after) FAIL", detail, cap)) return false;
+              if (hits.empty()) {
+                  SetText(detail, cap, L"EventSystem live raycast không trả GameObject UI tại điểm F8");
+                  Append(detail, cap, L" • rawCount="); AppendInt(detail, cap, count);
+                  return false;
+              }
+              return true;
+          }
+
+          bool GameObjectForControl'''
+              s = s[:m.start()] + replacement + s[m.end():]
+              p.write_text(s, encoding='utf-8')
+
+          # Version/protocol/UI metadata.
+          p = root / 'src/probe_protocol.h'
+          s = p.read_text(encoding='utf-8').replace('0x00010200u', '0x00010300u')
+          p.write_text(s, encoding='utf-8')
+
+          p = root / 'CMakeLists.txt'
+          s = p.read_text(encoding='utf-8').replace('VERSION 0.1.2', 'VERSION 0.1.3')
+          p.write_text(s, encoding='utf-8')
+
+          for rel in ['src/probe_controller_impl_1.inl', 'src/probe_controller_impl_2.inl', 'src/probe_bridge_impl_4.inl']:
+              p = root / rel
+              s = p.read_text(encoding='utf-8').replace('v0.1.2', 'v0.1.3').replace('V012', 'V013')
+              p.write_text(s, encoding='utf-8')
+
+          p = root / '.github/workflows/build-windows.yml'
+          s = p.read_text(encoding='utf-8').replace('v0.1.2-win-x64', 'v0.1.3-win-x64').replace('v0.1.2 binaries', 'v0.1.3 binaries')
+          p.write_text(s, encoding='utf-8')
+
+          p = root / 'tests/test_source_contract.py'
+          s = p.read_text(encoding='utf-8')
+          s = s.replace('"RaycastUiObjectsAtPoint", "MapRaycastGameObject",', '"RaycastUiObjectsAtPoint", "MapRaycastGameObject",\n        "GetLastPointerEventData", "m_RaycastResultCache", "get_currentInputModule", "LivePointerRaycastRuntime",')
+          s = s.replace('v0.1.2-win-x64', 'v0.1.3-win-x64').replace('0.1.2-probe', '0.1.3-probe')
+          p.write_text(s, encoding='utf-8')
+
+          Path('VERSION.txt').write_text('0.1.3-probe\nSTATUS=BUILD_PENDING\nRUNTIME=LIVE_POINTER_DIRECT_RETEST_REQUIRED\n', encoding='utf-8')
+
+          p = root / 'README.md'
+          s = p.read_text(encoding='utf-8').replace('v0.1.2', 'v0.1.3').replace('0.1.2-probe', '0.1.3-probe')
+          s = s.replace('Build: **BUILD PASS** trên Windows/MSVC x64.', 'Build: **BUILD PENDING** cho v0.1.3 live-pointer resolver.')
+          s += '\n\n## v0.1.3 live-pointer resolver\n\nv0.1.2 live test trả `Action ném managed exception` trước khi map target. v0.1.3 không tự tạo `PointerEventData`/`List<RaycastResult>` nữa; nó tái sử dụng `EventSystem.current.currentInputModule`, `PointerInputModule.GetLastPointerEventData(-1)` và `m_RaycastResultCache`, tạm set position F8 rồi restore. Log lỗi giờ chỉ rõ stage nếu managed call còn lỗi.\n'
+          p.write_text(s, encoding='utf-8')
+
+          p = root / 'PROJECT_KNOWLEDGE.md'
+          s = p.read_text(encoding='utf-8').replace('0.1.2-probe', '0.1.3-probe').replace('v0.1.2', 'v0.1.3')
+          s += '\n## v0.1.3 runtime correction\n- v0.1.2 F8/Direct live result: managed exception inside manually-created EventSystem raycast path.\n- v0.1.3 reuses live PointerInputModule pointer data and raycast cache; no click is dispatched during F8.\n- Runtime acceptance remains live F8 + TEST DIRECT only.\n'
+          p.write_text(s, encoding='utf-8')
+
+          p = root / 'CHANGELOG.md'
+          old = p.read_text(encoding='utf-8')
+          entry = '# Changelog\n\n## [0.1.3-probe] - 2026-09-12\n\n- Fix v0.1.2 live `Action ném managed exception` by retiring manual `new PointerEventData/new List<RaycastResult>` from active F8 path.\n- Reuse `EventSystem.current.currentInputModule`, `PointerInputModule.GetLastPointerEventData(-1)` and live `m_RaycastResultCache`.\n- Save/restore PointerEventData.position around read-only `RaycastAll`.\n- Add stage-specific managed exception diagnostics.\n- Protocol bump `0x00010300`.\n- Runtime: `LIVE_POINTER_DIRECT_RETEST_REQUIRED`.\n\n'
+          if old.startswith('# Changelog\n\n'):
+              old = old[len('# Changelog\n\n'):]
+          p.write_text(entry + old, encoding='utf-8')
+          '@ | Set-Content -Encoding utf8 patch_v013.py
+          python patch_v013.py
+
+      - name: Source contract tests
+        shell: pwsh
+        run: |
+          python -m pip install pytest
+          python -m pytest -q tests/test_source_contract.py
+
+      - name: Configure x64
+        run: cmake -S . -B build -A x64
+
+      - name: Build Release
+        run: cmake --build build --config Release
+
+      - name: Native tests
+        run: ctest --test-dir build -C Release --output-on-failure
+
+      - name: Mark build pass
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+          p = Path('VERSION.txt')
+          p.write_text('0.1.3-probe\nSTATUS=BUILD_PASS\nRUNTIME=LIVE_POINTER_DIRECT_RETEST_REQUIRED\n', encoding='utf-8')
+          p = Path('README.md')
+          s = p.read_text(encoding='utf-8').replace('Build: **BUILD PENDING** cho v0.1.3 live-pointer resolver.', 'Build: **BUILD PASS** trên Windows/MSVC x64 cho v0.1.3.')
+          p.write_text(s, encoding='utf-8')
+          '@ | Set-Content -Encoding utf8 mark_pass.py
+          python mark_pass.py
+
+      - name: Stage artifact
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force artifact | Out-Null
+          Copy-Item build/bin/ProbeController.exe artifact/ProbeController.exe
+          Copy-Item build/bin/ProbeBridge.dll artifact/ProbeBridge.dll
+          Copy-Item README.md artifact/README.md
+          Copy-Item VERSION.txt artifact/VERSION.txt
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ThanLong-UI-Internal-Probe-v0.1.3-win-x64
+          path: artifact/
+          if-no-files-found: error
+
+      - name: Commit source and binaries
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item artifact/ProbeController.exe dist/ProbeController.exe
+          Copy-Item artifact/ProbeBridge.dll dist/ProbeBridge.dll
+          Compress-Archive -Path artifact/* -DestinationPath dist/ThanLong-UI-Internal-Probe-v0.1.3-win-x64.zip -Force
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add CMakeLists.txt README.md CHANGELOG.md PROJECT_KNOWLEDGE.md VERSION.txt src tests .github/workflows/build-windows.yml dist
+          if (-not (git diff --cached --quiet)) {
+            git commit -m "fix: probe v0.1.3 reuse live pointer raycast state [skip ci]"
+            git push
+          }

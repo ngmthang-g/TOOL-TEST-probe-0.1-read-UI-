@@ -233,6 +233,10 @@ void RunNamedTargetAction(UiTarget target, const wchar_t* label) {
     g_app.lastPicked = response.picked;
     const std::wstring action = std::wstring(L"TEST DIRECT TARGET • ") + label;
     ShowRowDetail(response.picked, action.c_str());
+    if (response.resultCode == static_cast<std::int32_t>(ResultCode::TargetAlreadyInState)) {
+        Log(std::wstring(response.detail) + L" • NO-OP an toàn, không dispatch và không chờ evidence giả");
+        return;
+    }
     Log(std::wstring(response.detail) + L" • waiting for fresh state proof (timer is observation delay, not success proof)");
     ScheduleEvidence(action, response.picked.identity, before);
 }

@@ -76,25 +76,11 @@ bool DirectInvokeAtPoint(int x, int y, ProbeResponse& response, wchar_t* detail,
 }
 
 
-std::wstring LowerAscii(std::wstring value) {
-    for (wchar_t& ch : value) {
-        if (ch >= L'A' && ch <= L'Z') ch = static_cast<wchar_t>(ch - L'A' + L'a');
-    }
-    return value;
-}
-
-bool ContainsAny(const std::wstring& value, std::initializer_list<const wchar_t*> terms) {
-    for (const wchar_t* term : terms) {
-        if (term && *term && value.find(term) != std::wstring::npos) return true;
-    }
-    return false;
-}
-
-std::wstring TargetFingerprint(const UiControl& control) {
-    return LowerAscii(control.className + L"|" + control.labels.name + L"|" + control.labels.text + L"|" +
-                      control.labels.tag + L"|" + control.labels.handler + L"|" + control.labels.ancestors + L"|" +
-                      control.labels.descendants);
-}
+enum class SkillBarSwitchState {
+    Unknown = 0,
+    BagUi = 1,
+    Skills = 2,
+};
 
 const wchar_t* TargetLabel(UiTarget target) {
     switch (target) {
@@ -105,88 +91,89 @@ const wchar_t* TargetLabel(UiTarget target) {
     }
 }
 
-int TargetThreshold(UiTarget target) {
-    switch (target) {
-        case UiTarget::OpenBag: return 70;
-        case UiTarget::SwitchToSkills: return 80;
-        case UiTarget::SwitchToBagUi: return 80;
-        default: return 100000;
+const wchar_t* SwitchStateLabel(SkillBarSwitchState state) {
+    switch (state) {
+        case SkillBarSwitchState::BagUi: return L"TAY NẢI/MENU (Site 1)";
+        case SkillBarSwitchState::Skills: return L"SKILL (Site 2)";
+        default: return L"UNKNOWN";
     }
 }
 
-int ScoreNamedTarget(UiTarget target, const UiControl& control) {
-    if (!control.directCallable) return -100000;
-    const std::wstring all = TargetFingerprint(control);
-    const std::wstring name = LowerAscii(control.labels.name);
-    const std::wstring text = LowerAscii(control.labels.text);
-    const std::wstring handler = LowerAscii(control.labels.handler);
-    const std::wstring ancestors = LowerAscii(control.labels.ancestors);
-    const std::wstring descendants = LowerAscii(control.labels.descendants);
-    const bool hudContext = ContainsAny(ancestors, {L"skillbar", L"topicon", L"mainui", L"maininterface", L"hud", L"operation", L"action"});
-    const bool switchVerb = ContainsAny(all, {L"switch", L"change", L"toggle", L"expand", L"collapse", L"more", L"show", L"convert"});
-    const bool bagCaption = control.labels.text.find(L"Túi đồ") != std::wstring::npos ||
-                            control.labels.descendants.find(L"Túi đồ") != std::wstring::npos ||
-                            text.find(L"túi đồ") != std::wstring::npos || descendants.find(L"túi đồ") != std::wstring::npos;
-
-    int score = 0;
+bool ExactNamedTarget(UiTarget target, const UiControl& control) {
+    if (!control.directCallable || control.kind != LocalKind::Button) return false;
     switch (target) {
         case UiTarget::OpenBag:
-            if (bagCaption) score += 140;
-            if (ContainsAny(name, {L"openbag", L"buttonbag", L"bagbutton", L"btnbag"})) score += 85;
-            if (ContainsAny(handler, {L"openbag", L"bagclick", L"bagclicked"})) score += 85;
-            if (all.find(L"inventory") != std::wstring::npos) score += 50;
-            if (all.find(L"bag") != std::wstring::npos) score += 45;
-            if (hudContext) score += 18;
-            if (ContainsAny(all, {L"sortbag", L"mergeitems", L"quickitem", L"gem bag", L"fashionbag", L"soulstone"})) score -= 90;
-            break;
-
+            // Exact BottomIcon_Layout identity recovered from decrypted DATA-222 Interface.unity3d.
+            return control.labels.name == L"ButBag" && control.labels.handler == L"ButBagClick";
         case UiTarget::SwitchToSkills:
-            if (ContainsAny(name, {L"switchtoskill", L"showskill", L"skillsswitch", L"skillbarswitch"})) score += 90;
-            if (ContainsAny(handler, {L"switchtoskill", L"showskill", L"skillbar", L"skillmode"})) score += 75;
-            if (all.find(L"skill") != std::wstring::npos) score += 45;
-            if (ContainsAny(descendants, {L"skill", L"fight", L"sword", L"combat"})) score += 28;
-            if (switchVerb) score += 35;
-            if (hudContext) score += 25;
-            if (bagCaption) score -= 140;
-            if (ContainsAny(handler, {L"buttonskillhovered", L"useskill"})) score -= 80;
-            break;
-
         case UiTarget::SwitchToBagUi:
-            if (ContainsAny(name, {L"switchtobag", L"showbag", L"bagswitch", L"menuswitch", L"functionswitch"})) score += 90;
-            if (ContainsAny(handler, {L"switchtobag", L"showbag", L"menu", L"function", L"shortcut"})) score += 70;
-            if (all.find(L"bag") != std::wstring::npos) score += 42;
-            if (ContainsAny(all, {L"menu", L"function", L"shortcut", L"grid", L"item"})) score += 30;
-            if (switchVerb) score += 35;
-            if (hudContext) score += 25;
-            if (bagCaption) score -= 160; // Do not confuse the actual Túi đồ button with the mode switch.
-            if (ContainsAny(handler, {L"sortbag", L"mergeitems", L"openbag"})) score -= 80;
-            break;
-
+            // Both screenshots are two visual states of this same SkillBar toggle button.
+            return control.labels.name == L"ButtonOriginalSwitchSite" &&
+                   control.labels.handler == L"ButtonOriginalSwitchSiteClicked";
         default:
-            return -100000;
+            return false;
     }
-    return score;
 }
 
-bool BetterNamedCandidate(const UiControl& candidate, const UiControl& current) {
-    if (candidate.hasGeometry != current.hasGeometry) return candidate.hasGeometry;
-    if (candidate.hasGeometry && current.hasGeometry) {
-        if (std::fabs(candidate.area - current.area) > 0.5f) return candidate.area < current.area;
-    }
-    return candidate.depth > current.depth;
+bool ReadToggleSelected(const UiControl& control, bool& selected) {
+    selected = false;
+    if (!control.object || !control.klass || control.kind != LocalKind::Toggle) return false;
+    std::int32_t value = 0;
+    wchar_t ignored[128]{};
+    if (!ScalarGetter(control.klass, "get_Selected", ManagedThis(control.object), value,
+                      ignored, _countof(ignored))) return false;
+    selected = value != 0;
+    return true;
 }
 
-bool NamedCandidateTie(const UiControl& a, const UiControl& b) {
-    if (a.hasGeometry != b.hasGeometry) return false;
-    if (a.hasGeometry && b.hasGeometry && std::fabs(a.area - b.area) > 0.5f) return false;
-    return a.depth == b.depth && a.identity != b.identity;
+bool ReadSkillBarSwitchState(SkillBarSwitchState& state, wchar_t* detail, std::size_t cap) {
+    state = SkillBarSwitchState::Unknown;
+    std::vector<UiControl> controls;
+    if (!EnumerateActiveUiObjects(controls, detail, cap)) return false;
+
+    const UiControl* first = nullptr;
+    const UiControl* second = nullptr;
+    int firstCount = 0;
+    int secondCount = 0;
+    for (const UiControl& control : controls) {
+        if (control.kind != LocalKind::Toggle) continue;
+        if (control.labels.name == L"ToggleFirstTab") { first = &control; ++firstCount; }
+        else if (control.labels.name == L"ToggleSecondTab") { second = &control; ++secondCount; }
+    }
+    if (firstCount != 1 || secondCount != 1 || !first || !second) {
+        SetText(detail, cap, L"TARGET STATE UNKNOWN • SkillBar ToggleFirstTab/ToggleSecondTab không duy nhất");
+        return false;
+    }
+
+    bool firstSelected = false;
+    bool secondSelected = false;
+    if (!ReadToggleSelected(*first, firstSelected) || !ReadToggleSelected(*second, secondSelected)) {
+        SetText(detail, cap, L"TARGET STATE UNKNOWN • không đọc được UIToggle.get_Selected");
+        return false;
+    }
+    if (firstSelected == secondSelected) {
+        SetText(detail, cap, L"TARGET STATE UNKNOWN • trạng thái Site 1/Site 2 không hợp lệ");
+        return false;
+    }
+    state = firstSelected ? SkillBarSwitchState::BagUi : SkillBarSwitchState::Skills;
+    return true;
+}
+
+bool TargetAlreadyInState(UiTarget target, SkillBarSwitchState state) {
+    return (target == UiTarget::SwitchToSkills && state == SkillBarSwitchState::Skills) ||
+           (target == UiTarget::SwitchToBagUi && state == SkillBarSwitchState::BagUi);
+}
+
+bool TargetDirectionReady(UiTarget target, SkillBarSwitchState state) {
+    return (target == UiTarget::SwitchToSkills && state == SkillBarSwitchState::BagUi) ||
+           (target == UiTarget::SwitchToBagUi && state == SkillBarSwitchState::Skills);
 }
 
 bool FindNamedTarget(UiTarget target, UiControl& selected, bool& ambiguous,
                      int& selectedScore, wchar_t* detail, std::size_t cap) {
     selected = {};
     ambiguous = false;
-    selectedScore = -100000;
+    selectedScore = 0;
     if (target == UiTarget::None) {
         SetText(detail, cap, L"TARGET NOT FOUND • target id không hợp lệ");
         return false;
@@ -194,31 +181,46 @@ bool FindNamedTarget(UiTarget target, UiControl& selected, bool& ambiguous,
 
     std::vector<UiControl> controls;
     if (!EnumerateActiveUiObjects(controls, detail, cap)) return false;
-    const int threshold = TargetThreshold(target);
-    bool found = false;
-    for (UiControl& control : controls) {
-        const int score = ScoreNamedTarget(target, control);
-        if (score < threshold) continue;
-        if (!found || score > selectedScore || (score == selectedScore && BetterNamedCandidate(control, selected))) {
-            selected = control;
-            selectedScore = score;
-            found = true;
-            ambiguous = false;
-        } else if (score == selectedScore && NamedCandidateTie(control, selected)) {
-            ambiguous = true;
-        }
+    int matches = 0;
+    for (const UiControl& control : controls) {
+        if (!ExactNamedTarget(target, control)) continue;
+        selected = control;
+        ++matches;
     }
-
-    if (!found) {
+    if (matches == 0) {
         SetText(detail, cap, L"TARGET NOT FOUND • ");
         Append(detail, cap, TargetLabel(target));
-        Append(detail, cap, L" • không có fingerprint đủ điểm; không dispatch");
+        Append(detail, cap, L" • exact DATA-222 Name/Handler không xuất hiện; không dispatch");
         return false;
     }
-    if (ambiguous) {
+    if (matches != 1) {
+        ambiguous = true;
         SetText(detail, cap, L"TARGET AMBIGUOUS • ");
         Append(detail, cap, TargetLabel(target));
-        Append(detail, cap, L" • nhiều live control ngang hạng; không dispatch");
+        Append(detail, cap, L" • exact identity xuất hiện nhiều hơn một live control; không dispatch");
+        return false;
+    }
+    selectedScore = 1000; // Exact identity, not heuristic ranking.
+    return true;
+}
+
+bool ResolveDirectionalState(UiTarget target, ProbeResponse& response,
+                             wchar_t* detail, std::size_t cap) {
+    if (target == UiTarget::OpenBag) return true;
+    SkillBarSwitchState state = SkillBarSwitchState::Unknown;
+    if (!ReadSkillBarSwitchState(state, detail, cap)) return false;
+    response.value1 = static_cast<std::int32_t>(state);
+    if (TargetAlreadyInState(target, state)) {
+        response.resultCode = static_cast<std::int32_t>(ResultCode::TargetAlreadyInState);
+        SetText(detail, cap, L"TARGET ALREADY IN STATE • ");
+        Append(detail, cap, TargetLabel(target));
+        Append(detail, cap, L" • current=");
+        Append(detail, cap, SwitchStateLabel(state));
+        Append(detail, cap, L" • không click để tránh toggle ngược");
+        return true;
+    }
+    if (!TargetDirectionReady(target, state)) {
+        SetText(detail, cap, L"TARGET STATE UNKNOWN • hướng toggle không an toàn; không dispatch");
         return false;
     }
     return true;
@@ -234,17 +236,23 @@ bool RecognizeTarget(UiTarget target, ProbeResponse& response, wchar_t* detail, 
     }
     FillRow(selected, response.picked);
     response.value0 = score;
+    if (!ResolveDirectionalState(target, response, detail, cap)) return false;
+    if (response.resultCode == static_cast<std::int32_t>(ResultCode::TargetAlreadyInState)) return true;
     response.resultCode = static_cast<std::int32_t>(ResultCode::TargetRecognized);
-    SetText(detail, cap, L"TARGET RECOGNIZED • ");
+    SetText(detail, cap, L"TARGET RECOGNIZED • exact DATA-222 identity • ");
     Append(detail, cap, TargetLabel(target));
-    Append(detail, cap, L" • score="); AppendInt(detail, cap, score);
     Append(detail, cap, L" • Name="); Append(detail, cap, response.picked.name);
     Append(detail, cap, L" • Handler="); Append(detail, cap, response.picked.handler);
+    if (target != UiTarget::OpenBag) {
+        Append(detail, cap, L" • direction-safe current=");
+        Append(detail, cap, response.value1 == static_cast<int>(SkillBarSwitchState::BagUi)
+            ? L"TAY NẢI/MENU (Site 1)" : L"SKILL (Site 2)");
+    }
     return true;
 }
 
 bool DirectInvokeTarget(UiTarget target, ProbeResponse& response, wchar_t* detail, std::size_t cap) {
-    // Re-enumerate and re-resolve on every request. Never reuse a pointer from RecognizeTarget.
+    // Every action request resolves both the control and directional state fresh.
     UiControl selected{};
     bool ambiguous = false;
     int score = 0;
@@ -254,11 +262,12 @@ bool DirectInvokeTarget(UiTarget target, ProbeResponse& response, wchar_t* detai
     }
     FillRow(selected, response.picked);
     response.value0 = score;
+    if (!ResolveDirectionalState(target, response, detail, cap)) return false;
+    if (response.resultCode == static_cast<std::int32_t>(ResultCode::TargetAlreadyInState)) return true;
     if (!InvokeControl(selected, detail, cap)) return false;
     response.resultCode = static_cast<std::int32_t>(ResultCode::TargetDispatched);
-    SetText(detail, cap, L"TEST DIRECT TARGET PASS • fresh live resolve -> callback • ");
+    SetText(detail, cap, L"TEST DIRECT TARGET PASS • exact identity + fresh state -> callback • ");
     Append(detail, cap, TargetLabel(target));
-    Append(detail, cap, L" • score="); AppendInt(detail, cap, score);
     return true;
 }
 

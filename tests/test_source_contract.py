@@ -45,15 +45,12 @@ def test_named_target_recognition_and_direct_dispatch_contract():
         "FindNamedTarget", "RecognizeTarget", "DirectInvokeTarget",
         "UiTarget::OpenBag", "UiTarget::SwitchToSkills", "UiTarget::SwitchToBagUi",
         "TARGET AMBIGUOUS", "TARGET NOT FOUND", "TARGET ALREADY IN STATE",
-        # Exact identities recovered from decrypted DATA-222 Interface.unity3d.
         'L"ButBag"', 'L"ButBagClick"',
         'L"ButtonOriginalSwitchSite"', 'L"ButtonOriginalSwitchSiteClicked"',
-        # Direction guard for the same physical switch button.
         'L"ToggleFirstTab"', 'L"ToggleSecondTab"', '"get_Selected"',
         "ReadSkillBarSwitchState",
     ]:
         assert token in bridge, token
-    # Target actions must use the same live direct callback path; never a semantic bag shortcut.
     assert "InvokeControl(selected" in bridge
     assert "SemanticOpenBag" not in bridge
     assert "TrySemanticCallUi" not in bridge
@@ -105,7 +102,6 @@ def test_controller_is_probe_only_and_f8_is_selection():
         "DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2",
     ]:
         assert token in s, token
-    # F8 is a selector; only explicit test buttons dispatch mutation commands.
     f8_pos = s.find("case WM_HOTKEY")
     direct_pos = s.find("Command::DirectInvokeAtPoint")
     assert f8_pos >= 0 and direct_pos >= 0
@@ -136,13 +132,14 @@ def test_build_and_ci_publish_probe_artifact():
     for token in [
         "windows-latest", "cmake -S . -B build -A x64",
         "ctest --test-dir build -C Release --output-on-failure",
-        "ThanLong-UI-Internal-Probe-v0.1.3-win-x64", "actions/upload-artifact@v4",
-        "dist/ProbeController.exe", "dist/ProbeBridge.dll", "contents: write",
+        "ThanLong-UI-Internal-Probe-v0.1.4-win-x64", "actions/upload-artifact@v4",
+        "dist/ProbeController.exe", "dist/ProbeBridge.dll",
+        "ThanLong-UI-Internal-Probe-v0.1.4-source.zip", "contents: write",
     ]:
         assert token in workflow, token
     readme = text("README.md")
     for token in [
         "SCAN PASS", "F8", "SCAN ACTIVE UI", "TEST DIRECT",
-        "ProbeBridge.dll", "0.1.3-probe",
+        "ProbeBridge.dll", "0.1.4-probe", "MỞ TAY NẢI", "CHUYỂN → SKILL", "CHUYỂN → TAY NẢI",
     ]:
         assert token in readme, token

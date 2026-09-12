@@ -37,7 +37,7 @@ jobs:
       - name: Native tests
         run: ctest --test-dir build -C Release --output-on-failure
 
-      - name: Stage artifact
+      - name: Stage runtime and source packages
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force artifact | Out-Null
@@ -45,25 +45,28 @@ jobs:
           Copy-Item build/bin/ProbeBridge.dll artifact/ProbeBridge.dll
           Copy-Item README.md artifact/README.md
           Copy-Item VERSION.txt artifact/VERSION.txt
+          Compress-Archive -Path CMakeLists.txt,README.md,VERSION.txt,CHANGELOG.md,PROJECT_KNOWLEDGE.md,src,tests,docs,.github -DestinationPath artifact/ThanLong-UI-Internal-Probe-v0.1.4-source.zip -Force
+          Compress-Archive -Path artifact/ProbeController.exe,artifact/ProbeBridge.dll,artifact/README.md,artifact/VERSION.txt -DestinationPath artifact/ThanLong-UI-Internal-Probe-v0.1.4-win-x64.zip -Force
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ThanLong-UI-Internal-Probe-v0.1.3-win-x64
+          name: ThanLong-UI-Internal-Probe-v0.1.4-win-x64
           path: artifact/
           if-no-files-found: error
 
-      - name: Publish binaries to dist
+      - name: Publish binaries and source to dist
         if: github.event_name == 'push' && github.actor != 'github-actions[bot]'
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force dist | Out-Null
           Copy-Item artifact/ProbeController.exe dist/ProbeController.exe
           Copy-Item artifact/ProbeBridge.dll dist/ProbeBridge.dll
-          Compress-Archive -Path artifact/* -DestinationPath dist/ThanLong-UI-Internal-Probe-v0.1.3-win-x64.zip -Force
+          Copy-Item artifact/ThanLong-UI-Internal-Probe-v0.1.4-win-x64.zip dist/ThanLong-UI-Internal-Probe-v0.1.4-win-x64.zip
+          Copy-Item artifact/ThanLong-UI-Internal-Probe-v0.1.4-source.zip dist/ThanLong-UI-Internal-Probe-v0.1.4-source.zip
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add dist
           if (git diff --cached --quiet) { exit 0 }
-          git commit -m "build: publish probe v0.1.3 binaries [skip ci]"
+          git commit -m "build: publish probe v0.1.4 binaries and source [skip ci]"
           git push

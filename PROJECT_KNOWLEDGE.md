@@ -2,51 +2,46 @@
 
 ## Current
 
-- Version: `0.1.3-probe`
-- Repo: `ngmthang-g/TOOL-TEST-probe-0.1-read-UI-`
+- Version: `0.1.4-probe`.
+- Repo: `ngmthang-g/TOOL-TEST-probe-0.1-read-UI-`.
 - Scope: runtime UI discovery + EventSystem target mapping + direct callback invocation only.
-- Build: **PASS** on Windows/MSVC x64. Final successful build run: `34621857069`.
-- Live evidence inherited from v0.1.1: scan PASS; F8 coordinate conversion PASS; old RectTransform geometry resolver failed with `hits=0`; donor InputSync works but is not a v0.1.3 test objective.
-- `TEST BAG SEMANTIC` is retired after live bridge timeout/game diss.
-- Runtime remains `EVENTSYSTEM_DIRECT_RETEST_REQUIRED` until live F8 + Direct evidence is collected.
+- Build candidate: Windows/MSVC x64; authoritative CI status is in `VERSION.txt` after the final build.
+- Runtime inherited: scan PASS on client thật; F8 remains selection-only.
+- Runtime for the three named targets remains `NAMED_TARGETS_UNTESTED` until live evidence exists.
 
-## v0.1.3 resolver contract
+## v0.1.4 exact named-target contract
+
+1. `MỞ TAY NẢI` uses the exact DATA-222 identity `ButBag` + `ButBagClick`.
+2. `CHUYỂN → SKILL` and `CHUYỂN → TAY NẢI` both resolve the same physical SkillBar button: `ButtonOriginalSwitchSite` + `ButtonOriginalSwitchSiteClicked`.
+3. Direction is guarded by fresh live state from `ToggleFirstTab` / `ToggleSecondTab` using `UIToggle.get_Selected`.
+4. If already in requested state, return `TargetAlreadyInState` and perform no callback.
+5. Missing exact target, duplicate exact target, or unreadable switch state fails closed; no mutation occurs.
+6. `NHẬN DIỆN` is read-only.
+7. `TEST DIRECT TARGET` re-enumerates and re-resolves both target and switch state on every request; no live UI pointer is cached across requests.
+8. Direct dispatch uses the existing `InvokeControl` path, not Bag Semantic or Windows mouse input.
+
+## Generic F8 resolver contract
 
 1. Controller captures DPI-correct client point with F8.
 2. Bridge builds Unity screen point.
-3. `EventSystem.current.RaycastAll(PointerEventData, List<RaycastResult>)` obtains actual Unity raycast GameObjects.
-4. Probe enumerates fresh `UIObject.instances`, resolves each UI object's GameObject, and maps raycast GameObject/Transform ancestors to those live objects.
-5. Prefer direct-callable target by raycast order then nearest ancestor distance; ties fail closed.
-6. F8 never dispatches action.
-7. `TEST DIRECT` repeats the raycast/map and invokes only the fresh target:
-   - UIButton -> `HandleClickEvent()`
-   - UIToggle -> selected/select callback
-   - UIRectTransform -> Lua PointerClickHandler
-8. Never persist a UI pointer between scans/transitions.
+3. EventSystem live pointer/raycast data maps current GameObject hits to fresh `UIObject.instances`.
+4. F8 never dispatches action.
+5. `TEST DIRECT` repeats target resolution and invokes only the current live target.
+6. Ties fail closed.
 
 ## Protocol
 
-Visible workflow uses `ScanUi`, `PickAtPoint`, `DirectInvokeAtPoint`. `InputSyncClickAtPoint` remains internal source compatibility/reference only and has no controller button. No semantic bag command exists.
+Visible workflow uses `ScanUi`, `PickAtPoint`, `DirectInvokeAtPoint`, `RecognizeTarget`, `DirectInvokeTarget`. `InputSyncClickAtPoint` remains source-reference compatibility only and has no controller button. No semantic bag command exists.
 
-## Verification evidence
+## Build verification required before release
 
-- Source contract tests: PASS on Windows runner.
-- CMake x64 configure: PASS.
-- MSVC Release build: PASS.
-- Native CTest: PASS.
-- Artifact upload: PASS.
-- `dist/` publication: PASS.
-- Final successful workflow run: `34621857069`.
+- Source contract tests.
+- CMake x64 configure.
+- MSVC Release build of `ProbeController.exe` and `ProbeBridge.dll`.
+- Native CTest.
+- Artifact upload.
+- `dist/` publication containing runtime ZIP and source ZIP.
 
-## Runtime acceptance for this iteration
+## Runtime acceptance
 
-A successful live target test should show:
-- F8: `raycastHits > 0`, `mapped > 0`, and preferably `callableMapped > 0` with correct target identity.
-- Direct: `DIRECT DISPATCH PASS • EventSystem re-raycast -> UIObject -> callback` and the intended UI transition occurs.
-
-Build/CI success alone is not runtime proof.
-
-## v0.1.3 runtime correction
-- v0.1.2 F8/Direct live result: managed exception inside manually-created EventSystem raycast path.
-- v0.1.3 reuses live PointerInputModule pointer data and raycast cache; no click is dispatched during F8.
-- Runtime acceptance remains live F8 + TEST DIRECT only.
+Build/CI success is not runtime proof. Live acceptance requires the client to show the intended transition for each named target, with no wrong-direction toggle and no game diss/timeout.

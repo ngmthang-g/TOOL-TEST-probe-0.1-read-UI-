@@ -2,15 +2,15 @@
 
 ## Current
 
-- Version: `0.1.2-probe`
+- Version: `0.1.3-probe`
 - Repo: `ngmthang-g/TOOL-TEST-probe-0.1-read-UI-`
 - Scope: runtime UI discovery + EventSystem target mapping + direct callback invocation only.
 - Build: **PASS** on Windows/MSVC x64. Final successful build run: `34621857069`.
-- Live evidence inherited from v0.1.1: scan PASS; F8 coordinate conversion PASS; old RectTransform geometry resolver failed with `hits=0`; donor InputSync works but is not a v0.1.2 test objective.
+- Live evidence inherited from v0.1.1: scan PASS; F8 coordinate conversion PASS; old RectTransform geometry resolver failed with `hits=0`; donor InputSync works but is not a v0.1.3 test objective.
 - `TEST BAG SEMANTIC` is retired after live bridge timeout/game diss.
 - Runtime remains `EVENTSYSTEM_DIRECT_RETEST_REQUIRED` until live F8 + Direct evidence is collected.
 
-## v0.1.2 resolver contract
+## v0.1.3 resolver contract
 
 1. Controller captures DPI-correct client point with F8.
 2. Bridge builds Unity screen point.
@@ -45,3 +45,8 @@ A successful live target test should show:
 - Direct: `DIRECT DISPATCH PASS • EventSystem re-raycast -> UIObject -> callback` and the intended UI transition occurs.
 
 Build/CI success alone is not runtime proof.
+
+## v0.1.3 runtime correction
+- v0.1.2 F8/Direct live result: managed exception inside manually-created EventSystem raycast path.
+- v0.1.3 reuses live PointerInputModule pointer data and raycast cache; no click is dispatched during F8.
+- Runtime acceptance remains live F8 + TEST DIRECT only.

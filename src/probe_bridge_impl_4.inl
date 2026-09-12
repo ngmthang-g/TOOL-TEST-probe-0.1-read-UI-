@@ -109,7 +109,7 @@ void CancelDrag(Il2CppObject* manager) {
 }
 
 bool InputSyncClickAtPoint(int x, int y, ProbeResponse& response, wchar_t* detail, std::size_t cap) {
-    // Retained only as known-working baseline from donor source; v0.1.2 UI does not expose this test.
+    // Retained only as known-working baseline from donor source; v0.1.3 UI does not expose this test.
     UiControl visual{}; EventRaycastStats visualStats{}; bool ambiguous = false; wchar_t visualDetail[256]{};
     if (FindEventSystemControlAtPoint(x, y, false, visual, ambiguous, visualStats, visualDetail, _countof(visualDetail)))
         FillRow(visual, response.picked);

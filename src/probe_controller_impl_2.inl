@@ -269,7 +269,7 @@ void CreateUi(HWND hwnd) {
     g_app.log = MakeControl(L"EDIT", L"", ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY | WS_VSCROLL | WS_BORDER,
                             860, 578, 557, 170, IDC_LOG);
     MakeControl(L"STATIC",
-                L"Probe v0.1.2: F8 dùng EventSystem.RaycastAll -> map UIObject -> TEST DIRECT. Không gọi Bag Semantic/InputSync test.",
+                L"Probe v0.1.3: F8 dùng EventSystem.RaycastAll -> map UIObject -> TEST DIRECT. Không gọi Bag Semantic/InputSync test.",
                 SS_LEFT, 12, 656, 820, 44, 0);
 }
 

@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.3-probe] - 2026-09-12
+
+- Fix v0.1.2 live `Action ném managed exception` by retiring manual `new PointerEventData/new List<RaycastResult>` from active F8 path.
+- Reuse `EventSystem.current.currentInputModule`, `PointerInputModule.GetLastPointerEventData(-1)` and live `m_RaycastResultCache`.
+- Save/restore PointerEventData.position around read-only `RaycastAll`.
+- Add stage-specific managed exception diagnostics.
+- Protocol bump `0x00010300`.
+- Runtime: `LIVE_POINTER_DIRECT_RETEST_REQUIRED`.
+
 ## [0.1.2-probe] - 2026-09-11
 
 - Thay F8/direct target resolver từ `RectangleContainsScreenPoint(camera=null)` sang `EventSystem.current.RaycastAll`.

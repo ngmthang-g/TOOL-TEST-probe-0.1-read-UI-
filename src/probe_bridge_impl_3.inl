@@ -373,37 +373,196 @@ bool ExtractRaycastGameObject(Il2CppObject* boxedResult, Il2CppObject*& gameObje
     return false;
 }
 
+struct LivePointerRaycastRuntime {
+    bool ready = false;
+    Il2CppClass* eventSystem = nullptr;
+    Il2CppClass* pointerEventData = nullptr;
+    const MethodInfo* eventGetCurrent = nullptr;
+    const MethodInfo* eventGetCurrentInputModule = nullptr;
+    const MethodInfo* eventRaycastAll = nullptr;
+    const MethodInfo* pointerGetPosition = nullptr;
+    const MethodInfo* pointerSetPosition = nullptr;
+};
+
+LivePointerRaycastRuntime g_liveRaycast;
+
+bool InvokeStageVoid(const MethodInfo* method, void* instance, void** args,
+                     const wchar_t* stage, wchar_t* detail, std::size_t cap) {
+    wchar_t inner[256]{};
+    if (InvokeVoid(method, instance, args, inner, _countof(inner))) return true;
+    SetText(detail, cap, stage);
+    Append(detail, cap, L" • ");
+    Append(detail, cap, inner);
+    return false;
+}
+
+bool EnsureLivePointerRaycast(wchar_t* detail, std::size_t cap) {
+    if (g_liveRaycast.ready) return true;
+    if (!EnsureUiGeometry(detail, cap)) return false;
+    g_liveRaycast.eventSystem = ResolveEventClass("EventSystem");
+    g_liveRaycast.pointerEventData = ResolveEventClass("PointerEventData");
+    if (!g_liveRaycast.eventSystem || !g_liveRaycast.pointerEventData) {
+        SetText(detail, cap, L"EventSystem/PointerEventData chưa resolve");
+        return false;
+    }
+    g_liveRaycast.eventGetCurrent = ExactMethod(g_liveRaycast.eventSystem, "get_current", 0, true);
+    g_liveRaycast.eventGetCurrentInputModule = ExactMethod(g_liveRaycast.eventSystem, "get_currentInputModule", 0, false);
+    g_liveRaycast.eventRaycastAll = ExactMethod(g_liveRaycast.eventSystem, "RaycastAll", 2, false,
+                                                 "UnityEngine.EventSystems.PointerEventData");
+    g_liveRaycast.pointerGetPosition = ExactMethod(g_liveRaycast.pointerEventData, "get_position", 0, false);
+    g_liveRaycast.pointerSetPosition = ExactMethod(g_liveRaycast.pointerEventData, "set_position", 1, false,
+                                                    "UnityEngine.Vector2");
+    if (!g_liveRaycast.eventGetCurrent || !g_liveRaycast.eventGetCurrentInputModule ||
+        !g_liveRaycast.eventRaycastAll || !g_liveRaycast.pointerGetPosition || !g_liveRaycast.pointerSetPosition) {
+        SetText(detail, cap, L"Live EventSystem/InputModule signature chưa resolve");
+        return false;
+    }
+    g_liveRaycast.ready = true;
+    return true;
+}
+
+bool GetLivePointerEventData(Il2CppObject* inputModule, Il2CppObject*& pointerData,
+                             wchar_t* detail, std::size_t cap) {
+    pointerData = nullptr;
+    if (!inputModule) return false;
+    Il2CppClass* moduleClass = g_api.object_get_class(inputModule);
+    const MethodInfo* getLast = moduleClass ? FindMethod(moduleClass, "GetLastPointerEventData", 1) : nullptr;
+    if (!getLast || StaticMethod(getLast) || !ParamType(getLast, 0, "System.Int32")) {
+        SetText(detail, cap, L"PointerInputModule.GetLastPointerEventData(int) chưa resolve");
+        return false;
+    }
+    for (std::int32_t id : {-1, 0}) {
+        void* args[] = {&id};
+        Il2CppObject* candidate = nullptr;
+        wchar_t inner[192]{};
+        if (InvokeObjectArgs(getLast, inputModule, args, candidate, inner, _countof(inner)) && candidate &&
+            AssignableObject(g_liveRaycast.pointerEventData, candidate)) {
+            pointerData = candidate;
+            return true;
+        }
+    }
+    SetText(detail, cap, L"PointerInputModule chưa có live PointerEventData; rê chuột trong game rồi F8");
+    return false;
+}
+
+bool GetLiveRaycastCache(Il2CppObject* inputModule, Il2CppObject*& cache,
+                         wchar_t* detail, std::size_t cap) {
+    cache = nullptr;
+    Il2CppClass* moduleClass = inputModule ? g_api.object_get_class(inputModule) : nullptr;
+    FieldInfo* cacheField = moduleClass ? FindField(moduleClass, "m_RaycastResultCache") : nullptr;
+    if (!cacheField) {
+        SetText(detail, cap, L"BaseInputModule.m_RaycastResultCache chưa resolve");
+        return false;
+    }
+    g_api.field_get_value(inputModule, cacheField, &cache);
+    if (!cache) {
+        SetText(detail, cap, L"m_RaycastResultCache hiện null");
+        return false;
+    }
+    return true;
+}
+
+bool ExtractLiveRaycastGameObject(Il2CppObject* boxedResult, Il2CppClass* resultClass,
+                                  FieldInfo* gameField, const MethodInfo* getGameObject,
+                                  Il2CppObject*& gameObject) {
+    gameObject = nullptr;
+    if (!boxedResult || !resultClass) return false;
+    wchar_t ignored[128]{};
+    if (getGameObject &&
+        InvokeObject(getGameObject, ManagedThis(boxedResult), gameObject, ignored, _countof(ignored)) &&
+        gameObject && AssignableObject(g_ui.unityGameObject, gameObject)) return true;
+    gameObject = nullptr;
+    if (gameField) {
+        g_api.field_get_value(boxedResult, gameField, &gameObject);
+        if (gameObject && AssignableObject(g_ui.unityGameObject, gameObject)) return true;
+    }
+    gameObject = nullptr;
+    return false;
+}
+
 bool RaycastRawGameObjects(int normalizedX, int normalizedY,
                            std::vector<Il2CppObject*>& hits,
                            EventRaycastStats& stats,
                            wchar_t* detail, std::size_t cap) {
     hits.clear();
     stats = {};
-    if (!EnsureEventSystemRaycast(detail, cap)) return false;
+    if (!EnsureLivePointerRaycast(detail, cap)) return false;
     if (!BuildUnityScreenPoint(normalizedX, normalizedY, stats.unityPoint, detail, cap)) return false;
 
     Il2CppObject* current = nullptr;
-    if (!InvokeObject(g_ui.eventGetCurrent, nullptr, current, detail, cap) || !current) {
-        SetText(detail, cap, L"EventSystem.current chưa sẵn sàng"); return false;
+    wchar_t inner[256]{};
+    if (!InvokeObject(g_liveRaycast.eventGetCurrent, nullptr, current, inner, _countof(inner)) || !current) {
+        SetText(detail, cap, L"EventSystem.current FAIL • "); Append(detail, cap, inner); return false;
     }
-    Il2CppObject* pointer = g_api.object_new(g_ui.pointerEventData);
-    if (!pointer) { SetText(detail, cap, L"Không tạo được PointerEventData"); return false; }
-    void* ctorArgs[] = {&current};
-    if (!InvokeVoid(g_ui.pointerCtor, pointer, ctorArgs, detail, cap)) return false;
-    UnityVector2 point = stats.unityPoint;
-    void* posArgs[] = {&point};
-    if (!InvokeVoid(g_ui.pointerSetPosition, pointer, posArgs, detail, cap)) return false;
 
-    Il2CppObject* list = g_api.object_new(g_ui.raycastListClass);
-    if (!list || !InvokeVoid(g_ui.raycastListCtor, list, nullptr, detail, cap)) {
-        SetText(detail, cap, L"Không tạo được List<RaycastResult>"); return false;
+    Il2CppObject* inputModule = nullptr;
+    inner[0] = 0;
+    if (!InvokeObject(g_liveRaycast.eventGetCurrentInputModule, current, inputModule, inner, _countof(inner)) || !inputModule) {
+        SetText(detail, cap, L"EventSystem.currentInputModule FAIL • "); Append(detail, cap, inner); return false;
     }
-    void* rayArgs[] = {&pointer, &list};
-    if (!InvokeVoid(g_ui.eventRaycastAll, current, rayArgs, detail, cap)) return false;
+
+    Il2CppObject* pointerData = nullptr;
+    if (!GetLivePointerEventData(inputModule, pointerData, detail, cap)) return false;
+
+    Il2CppObject* cache = nullptr;
+    if (!GetLiveRaycastCache(inputModule, cache, detail, cap)) return false;
+    Il2CppClass* listClass = g_api.object_get_class(cache);
+    const MethodInfo* clear = listClass ? FindMethod(listClass, "Clear", 0) : nullptr;
+    const MethodInfo* getCount = listClass ? FindMethod(listClass, "get_Count", 0) : nullptr;
+    const MethodInfo* getItem = listClass ? FindMethod(listClass, "get_Item", 1) : nullptr;
+    if (!clear || !getCount || !getItem || !ParamType(getItem, 0, "System.Int32")) {
+        SetText(detail, cap, L"Live RaycastResult cache methods chưa resolve");
+        return false;
+    }
+
+    const Il2CppType* itemType = g_api.method_get_return_type(getItem);
+    Il2CppClass* resultClass = itemType ? g_api.class_from_type(itemType) : nullptr;
+    FieldInfo* gameField = resultClass ? FindField(resultClass, "gameObject") : nullptr;
+    const MethodInfo* getGameObject = resultClass ? FindMethod(resultClass, "get_gameObject", 0) : nullptr;
+    if (!resultClass || (!gameField && !getGameObject)) {
+        SetText(detail, cap, L"RaycastResult.gameObject chưa resolve");
+        return false;
+    }
+
+    Il2CppObject* oldPositionBox = nullptr;
+    inner[0] = 0;
+    if (!InvokeObject(g_liveRaycast.pointerGetPosition, pointerData, oldPositionBox, inner, _countof(inner)) || !oldPositionBox) {
+        SetText(detail, cap, L"PointerEventData.get_position FAIL • "); Append(detail, cap, inner); return false;
+    }
+    void* oldRaw = g_api.object_unbox(oldPositionBox);
+    if (!oldRaw) { SetText(detail, cap, L"PointerEventData.position unbox FAIL"); return false; }
+    UnityVector2 oldPosition = *reinterpret_cast<const UnityVector2*>(oldRaw);
+
+    if (!InvokeStageVoid(clear, cache, nullptr, L"RaycastCache.Clear(before) FAIL", detail, cap)) return false;
+
+    UnityVector2 point = stats.unityPoint;
+    void* setArgs[] = {&point};
+    if (!InvokeStageVoid(g_liveRaycast.pointerSetPosition, pointerData, setArgs,
+                         L"PointerEventData.set_position FAIL", detail, cap)) return false;
+
+    void* rayArgs[] = {&pointerData, &cache};
+    bool rayOk = InvokeStageVoid(g_liveRaycast.eventRaycastAll, current, rayArgs,
+                                 L"EventSystem.RaycastAll FAIL", detail, cap);
+
+    void* restoreArgs[] = {&oldPosition};
+    wchar_t restoreDetail[256]{};
+    bool restoreOk = InvokeVoid(g_liveRaycast.pointerSetPosition, pointerData, restoreArgs,
+                                restoreDetail, _countof(restoreDetail));
+    if (!rayOk) {
+        wchar_t ignored[128]{}; (void)InvokeVoid(clear, cache, nullptr, ignored, _countof(ignored));
+        return false;
+    }
+    if (!restoreOk) {
+        wchar_t ignored[128]{}; (void)InvokeVoid(clear, cache, nullptr, ignored, _countof(ignored));
+        SetText(detail, cap, L"PointerEventData.restore_position FAIL • "); Append(detail, cap, restoreDetail);
+        return false;
+    }
 
     std::int64_t count64 = 0;
-    if (!InvokeScalar(g_ui.raycastListCount, list, count64, detail, cap) || count64 < 0 || count64 > 4096) {
-        SetText(detail, cap, L"RaycastAll trả Count không hợp lệ"); return false;
+    inner[0] = 0;
+    if (!InvokeScalar(getCount, cache, count64, inner, _countof(inner)) || count64 < 0 || count64 > 4096) {
+        wchar_t ignored[128]{}; (void)InvokeVoid(clear, cache, nullptr, ignored, _countof(ignored));
+        SetText(detail, cap, L"Raycast cache Count FAIL • "); Append(detail, cap, inner); return false;
     }
     const int count = static_cast<int>(count64);
     stats.raycastHits = count;
@@ -413,14 +572,17 @@ bool RaycastRawGameObjects(int normalizedX, int normalizedY,
         std::int32_t index = i;
         void* itemArgs[] = {&index};
         Il2CppObject* boxed = nullptr;
-        wchar_t ignored[128]{};
-        if (!InvokeObjectArgs(g_ui.raycastListGetItem, list, itemArgs, boxed, ignored, _countof(ignored)) || !boxed) continue;
+        wchar_t itemDetail[128]{};
+        if (!InvokeObjectArgs(getItem, cache, itemArgs, boxed, itemDetail, _countof(itemDetail)) || !boxed) continue;
         Il2CppObject* gameObject = nullptr;
-        if (!ExtractRaycastGameObject(boxed, gameObject) || !gameObject) continue;
+        if (!ExtractLiveRaycastGameObject(boxed, resultClass, gameField, getGameObject, gameObject)) continue;
         hits.push_back(gameObject);
     }
+
+    if (!InvokeStageVoid(clear, cache, nullptr, L"RaycastCache.Clear(after) FAIL", detail, cap)) return false;
     if (hits.empty()) {
-        SetText(detail, cap, L"EventSystem.RaycastAll không trả GameObject UI tại điểm F8");
+        SetText(detail, cap, L"EventSystem live raycast không trả GameObject UI tại điểm F8");
+        Append(detail, cap, L" • rawCount="); AppendInt(detail, cap, count);
         return false;
     }
     return true;

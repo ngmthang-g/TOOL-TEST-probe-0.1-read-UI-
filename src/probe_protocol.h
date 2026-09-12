@@ -7,7 +7,7 @@
 namespace tlprobe {
 
 constexpr std::uint32_t kMagic = 0x42525054u; // TPRB
-constexpr std::uint32_t kProtocolVersion = 0x00010200u;
+constexpr std::uint32_t kProtocolVersion = 0x00010300u;
 constexpr UINT kWakeMessage = WM_APP + 0x641;
 constexpr wchar_t kMappingPrefix[] = L"Local\\ThanLongUiProbe_";
 constexpr int kCoordinateScale = 100000;

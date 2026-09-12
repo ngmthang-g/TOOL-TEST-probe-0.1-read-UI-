@@ -39,6 +39,7 @@ def test_bridge_contains_only_probe_runtime_paths():
         "TryClickUI", "EndUIDrag", "CancelUIDragState",
         "EventSystem", "PointerEventData", "RaycastAll",
         "RaycastUiObjectsAtPoint", "MapRaycastGameObject",
+        "GetLastPointerEventData", "m_RaycastResultCache", "get_currentInputModule", "LivePointerRaycastRuntime",
         "ChooseRaycastCandidate", "PickStatus::Ambiguous", "TlcProbeGetMessageHook",
     ]:
         assert token in s, token
@@ -98,13 +99,13 @@ def test_build_and_ci_publish_probe_artifact():
     for token in [
         "windows-latest", "cmake -S . -B build -A x64",
         "ctest --test-dir build -C Release --output-on-failure",
-        "ThanLong-UI-Internal-Probe-v0.1.2-win-x64", "actions/upload-artifact@v4",
+        "ThanLong-UI-Internal-Probe-v0.1.3-win-x64", "actions/upload-artifact@v4",
         "dist/ProbeController.exe", "dist/ProbeBridge.dll", "contents: write",
     ]:
         assert token in workflow, token
     readme = text("README.md")
     for token in [
         "SCAN PASS", "F8", "SCAN ACTIVE UI", "TEST DIRECT",
-        "ProbeBridge.dll", "0.1.2-probe",
+        "ProbeBridge.dll", "0.1.3-probe",
     ]:
         assert token in readme, token

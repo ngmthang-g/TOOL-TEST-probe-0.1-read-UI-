@@ -47,6 +47,7 @@ enum class ResultCode : std::int32_t {
     InputSyncDispatched = 5,
     TargetRecognized = 6,
     TargetDispatched = 7,
+    TargetAlreadyInState = 8,
 };
 
 struct UiRow {

@@ -6,7 +6,7 @@ Mini probe tách từ nền 9.9, chỉ phục vụ đọc UI runtime và thử g
 
 - Version: `0.1.4-probe`.
 - Build candidate: Windows/MSVC x64; trạng thái chính thức nằm trong `VERSION.txt` sau CI.
-- Runtime nền đã biết: `SCAN ACTIVE UI` PASS trên client thật; F8 vẫn là selector không click.
+- Runtime nền đã biết: **SCAN PASS** (`SCAN ACTIVE UI`) trên client thật; F8 vẫn là selector không click.
 - Ba target mới `MỞ TAY NẢI`, `CHUYỂN → SKILL`, `CHUYỂN → TAY NẢI`: **RUNTIME UNTESTED** cho tới khi có log/live evidence từ client thật.
 
 ## Ba target v0.1.4
